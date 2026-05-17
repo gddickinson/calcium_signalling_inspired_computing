@@ -216,3 +216,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - This work draws inspiration from research on calcium signaling in various cell types
 - Special thanks to contributors in the fields of computational neuroscience and biologically-inspired computing
+
+
+---
+*Built with AI assistance from [Claude (Anthropic)](https://claude.com/).*
