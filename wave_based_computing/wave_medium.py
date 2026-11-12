@@ -1,20 +1,24 @@
 """
 Wave Computing Medium -- core simulation engine.
 
-Implements a 2D wave-like medium with sources, obstacles,
-resonant regions, and memory elements.
+A 2D medium obeying the damped wave equation
 
-Note on the update rule: it is written in the form of a leapfrog wave-equation
-step (2*u - u_prev + D*dt^2*L), but `previous` is set to `current` before it is
-used and L is the neighbour mean (not mean minus centre), so each step is in
-effect u_next = damping * (u + D*dt^2 * neighbour_mean(u)) - nonlinearity*u^3,
-plus sources and memory elements: a first-order, damped, slowly spreading driven
-field rather than a second-order wave equation. With the defaults
-(D*dt^2 = 0.002) activity stays close to the sources. Making it a true wave
-equation also needs the source and nonlinear terms rescaled (left as an open
-decision; see SESSION_LOG.md). Information is encoded in
-wave properties (amplitude, frequency, phase) and computation
-emerges from wave interactions.
+    u_tt = c^2 * laplacian(u) - gamma * u_t - nonlinearity * u^3
+
+with point sources, obstacles, resonant regions and memory elements. Information is
+encoded in wave properties (amplitude, frequency, phase) and computation emerges
+from wave interactions.
+
+Numerics: leapfrog (second order in time) with a 9-point Laplacian on a grid of
+spacing dx (cells). Each output step of length `time_step` is split into
+`substeps` internal steps dt_sub chosen so that c * dt_sub / dx satisfies the CFL
+condition of this stencil (with a safety factor), so the scheme is stable for any
+wave speed. `damping` is the fraction of wave velocity kept per output step.
+Sources and memory elements are "hard" (they set the field in their cells), the
+absorbing boundary is a 5-cell sponge, resonant regions lose no energy while
+their dominant frequency matches their tuning. (Before 2026-11-11 the update
+overwrote the previous state before using it, so it was a first-order smoothing
+rather than a wave equation; see SESSION_LOG.md.)
 """
 
 import numpy as np
@@ -26,27 +30,43 @@ from sklearn.decomposition import PCA
 
 
 class WaveComputingMedium:
+    # 9-point Laplacian: neighbour mean (kernel below) minus centre ~= LAPLACIAN_SCALE * dx^2 * laplacian(u)
+    LAPLACIAN_SCALE = 0.3
+    # Largest eigenvalue of -laplacian_h for dx = 1 (checkerboard mode: 1.6 / 0.3)
+    LAMBDA_MAX = 1.6 / 0.3
+    # Leapfrog is stable for c * dt * sqrt(LAMBDA_MAX) / dx <= 2; keep this fraction of the limit
+    CFL_SAFETY = 0.9
+    SPONGE_WIDTH = 5
+
     def __init__(self, size=(100, 100), boundary='absorbing', damping=0.99,
-                diffusion=0.2, nonlinearity=0.1, time_step=0.1):
+                wave_speed=10.0, nonlinearity=0.1, time_step=0.1, dx=1.0, diffusion=None):
         """
         Initialize a wave computing medium with specified properties.
 
         Parameters:
         - size: Size of the 2D grid as (width, height); arrays have shape (height, width)
           and are indexed [y, x]
-        - boundary: Boundary condition ('absorbing', 'reflecting', 'periodic')
-        - damping: Wave damping factor
-        - diffusion: Diffusion coefficient
-        - nonlinearity: Degree of nonlinearity in wave propagation
-        - time_step: Time step for simulation
+        - boundary: 'absorbing' (5-cell sponge), 'reflecting' (mirror, zero normal
+          gradient) or 'periodic' (wrap-around)
+        - damping: fraction of the wave velocity kept per output step (1 = lossless)
+        - wave_speed: wave speed c in grid cells per time unit
+        - nonlinearity: coefficient of the cubic restoring term (-nonlinearity * u^3)
+        - time_step: output time step (time units); split into CFL-stable substeps
+        - dx: grid spacing (cells)
+        - diffusion: deprecated alias for c^2 (if given, wave_speed = sqrt(diffusion))
         """
         self.width, self.height = size
         shape = (self.height, self.width)
         self.boundary = boundary
         self.damping = damping
-        self.diffusion = diffusion
+        if diffusion is not None:
+            wave_speed = float(np.sqrt(diffusion))
+        self.wave_speed = float(wave_speed)
+        self.diffusion = self.wave_speed ** 2       # c^2, kept for callers that read it
         self.nonlinearity = nonlinearity
         self.time_step = time_step
+        self.dx = dx
+        self.substeps, self.dt_sub = self._cfl_substeps()
 
         # Initialize wave state variables
         self.current = np.zeros(shape)
@@ -54,8 +74,9 @@ class WaveComputingMedium:
         self.frequency = np.zeros(shape)
         self.phase = np.zeros(shape)
 
-        # Create diffusion kernel
+        # Neighbour-weight kernel for the Laplacian, sponge mask for absorbing edges
         self.kernel = self._create_diffusion_kernel()
+        self.sponge = self._sponge_mask(shape)
 
         # Initialize wave sources and obstacles
         self.sources = []
@@ -72,8 +93,42 @@ class WaveComputingMedium:
         self.energy_history = []
         self.peak_frequency_history = []
 
+    def _cfl_substeps(self):
+        """Number of internal steps per output step and their length, from the CFL condition."""
+        if self.wave_speed <= 0:
+            return 1, self.time_step
+        dt_max = self.CFL_SAFETY * 2.0 * self.dx / (self.wave_speed * np.sqrt(self.LAMBDA_MAX))
+        n = max(1, int(np.ceil(self.time_step / dt_max - 1e-12)))
+        return n, self.time_step / n
+
+    def _sponge_mask(self, shape):
+        """Absorbing layer: factor exp(-(0.2 * (width - i))^2) in the i-th cell from each edge, 1 inside."""
+        mask = np.ones(shape)
+        bw = self.SPONGE_WIDTH
+        for i in range(bw):
+            f = np.exp(-(0.2 * (bw - i)) ** 2)
+            for row in (i, shape[0] - 1 - i):
+                if 0 <= row < shape[0]:
+                    mask[row, :] = np.minimum(mask[row, :], f)
+            for col in (i, shape[1] - 1 - i):
+                if 0 <= col < shape[1]:
+                    mask[:, col] = np.minimum(mask[:, col], f)
+        return mask
+
+    def laplacian(self, u):
+        """9-point Laplacian (mirror edges, or wrap-around for periodic boundaries)."""
+        bc = 'wrap' if self.boundary == 'periodic' else 'symm'
+        mean = convolve2d(u, self.kernel, mode='same', boundary=bc)
+        return (mean - u) / (self.LAPLACIAN_SCALE * self.dx ** 2)
+
+    def wave_energy(self):
+        """Discrete leapfrog energy 0.5*sum(((u - u_prev)/dt)^2) - 0.5*c^2*sum(u * L(u_prev)) (exactly conserved
+        without damping, sources, nonlinearity or sponge on a periodic grid)."""
+        v = (self.current - self.previous) / self.dt_sub
+        return 0.5 * np.sum(v ** 2) - 0.5 * self.diffusion * np.sum(self.current * self.laplacian(self.previous))
+
     def _create_diffusion_kernel(self):
-        """Create a 3x3 kernel for wave diffusion."""
+        """Create the 3x3 neighbour-weight kernel (sums to 1, zero centre) used for the Laplacian."""
         kernel = np.array([
             [0.05, 0.2, 0.05],
             [0.2, 0.0, 0.2],
@@ -114,71 +169,57 @@ class WaveComputingMedium:
             return self.memory_elements[(x, y)][0]
         return 0.0
 
-    def update(self, t):
-        """Update the wave medium for one time step (see the module note on the update rule)."""
-        self.previous = self.current.copy()
-
-        laplacian = convolve2d(self.current, self.kernel, mode='same', boundary='symm')
-
-        next_state = (2 * self.current - self.previous
-                     + self.diffusion * self.time_step**2 * laplacian)
-
-        next_state *= self.damping
-
-        # Boundary conditions
-        if self.boundary == 'absorbing':
-            boundary_mask = np.ones_like(next_state)
-            boundary_width = 5
-            for i in range(boundary_width):
-                factor = 1.0 - (i / boundary_width)**2
-                boundary_mask[i, :] *= factor
-                boundary_mask[-i-1, :] *= factor
-                boundary_mask[:, i] *= factor
-                boundary_mask[:, -i-1] *= factor
-            next_state *= boundary_mask
-        elif self.boundary == 'periodic':
-            next_state[0, :] += 0.5 * next_state[-1, :]
-            next_state[-1, :] += 0.5 * next_state[0, :]
-            next_state[:, 0] += 0.5 * next_state[:, -1]
-            next_state[:, -1] += 0.5 * next_state[:, 0]
-
-        # Nonlinearity
-        if self.nonlinearity > 0:
-            nonlinear_term = self.nonlinearity * self.current**3
-            next_state -= nonlinear_term
-
-        # Obstacles
-        next_state[self.obstacles] = 0
-
-        # Resonant regions
-        for (x_min, x_max, y_min, y_max), freq in self.resonant_regions.items():
-            if len(self.history) > 10:
-                local_freq = self._estimate_local_frequency(x_min, x_max, y_min, y_max)
-                resonance_factor = 1.0 + 0.1 * np.exp(-((local_freq - freq) / 0.1)**2)
-                next_state[y_min:y_max, x_min:x_max] *= resonance_factor
-
-        # Wave sources
+    def _source_field(self, t):
+        """Sum of the active sources' values at time t on their 3x3 Gaussian footprints, and the covered cells."""
+        field = np.zeros_like(self.current)
+        covered = np.zeros(self.current.shape, dtype=bool)
         for source in self.sources:
+            if source['duration'] is not None and t >= source['start_time'] + source['duration']:
+                continue
             x, y = source['position']
-            amplitude = source['amplitude']
-            frequency = source['frequency']
-            phase = source['phase']
+            value = source['amplitude'] * np.sin(2 * np.pi * source['frequency'] * t + source['phase'])
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    nx_pos, ny_pos = x + dx, y + dy
+                    if 0 <= nx_pos < self.width and 0 <= ny_pos < self.height:
+                        field[ny_pos, nx_pos] += value * np.exp(-(dx**2 + dy**2) / 2)
+                        covered[ny_pos, nx_pos] = True
+        return field, covered
 
-            if source['duration'] is None or t < source['start_time'] + source['duration']:
-                source_value = amplitude * np.sin(2 * np.pi * frequency * t + phase)
-                for dx in range(-1, 2):
-                    for dy in range(-1, 2):
-                        nx_pos, ny_pos = x + dx, y + dy
-                        if 0 <= nx_pos < self.width and 0 <= ny_pos < self.height:
-                            weight = np.exp(-(dx**2 + dy**2) / 2)
-                            next_state[ny_pos, nx_pos] += source_value * weight
+    def _velocity_factor(self):
+        """Per-cell fraction of velocity kept per substep: `damping` spread over the substeps, and no loss in a
+        resonant region while its dominant frequency matches its tuning (match weight exp(-((f - f0)/0.1)^2))."""
+        keep = np.full(self.current.shape, self.damping ** (1.0 / self.substeps))
+        if len(self.history) > 10:
+            for (x_min, x_max, y_min, y_max), freq in self.resonant_regions.items():
+                local_freq = self._estimate_local_frequency(x_min, x_max, y_min, y_max)
+                match = np.exp(-((local_freq - freq) / 0.1) ** 2)
+                region = keep[y_min:y_max, x_min:x_max]
+                keep[y_min:y_max, x_min:x_max] = np.maximum(region, region ** (1.0 - match))
+        return keep
 
-        # Memory elements
+    def update(self, t):
+        """Advance the medium by one output step (time t -> t + time_step) in CFL-stable substeps."""
+        dt = self.dt_sub
+        keep = self._velocity_factor()
+        for k in range(self.substeps):
+            u, u_prev = self.current, self.previous
+            accel = self.diffusion * self.laplacian(u)
+            if self.nonlinearity > 0:
+                accel = accel - self.nonlinearity * u ** 3
+            next_state = u + keep * (u - u_prev) + dt ** 2 * accel
+            next_state[self.obstacles] = 0
+            if self.boundary == 'absorbing':
+                next_state *= self.sponge
+                u = u * self.sponge
+            field, covered = self._source_field(t + (k + 1) * dt)
+            next_state[covered] = field[covered]
+            for (x, y), (value, _) in self.memory_elements.items():
+                next_state[y, x] = value
+            self.previous, self.current = u, next_state
+
         for (x, y), (value, decay_rate) in list(self.memory_elements.items()):
             self.memory_elements[(x, y)] = (value * decay_rate, decay_rate)
-            next_state[y, x] += 0.1 * value
-
-        self.current = next_state
 
         if len(self.history) > 5:
             self._update_frequency_phase_estimates()
@@ -205,22 +246,17 @@ class WaveComputingMedium:
         return 0.0
 
     def _update_frequency_phase_estimates(self):
-        """Update local frequency and phase estimates."""
+        """Update local frequency (sign changes over the last 10 frames) and phase estimates."""
         if len(self.history) < 10:
             return
         recent = np.array(self.history[-10:])
-        for y in range(self.height):
-            for x in range(self.width):
-                series = recent[:, y, x]
-                crossings = np.sum(np.diff(np.signbit(series)))
-                self.frequency[y, x] = crossings / (10 * self.time_step) / 2
-                min_val = np.min(series)
-                max_val = np.max(series)
-                if max_val > min_val:
-                    normalized = (self.current[y, x] - min_val) / (max_val - min_val)
-                    self.phase[y, x] = normalized * 2 * np.pi
-                else:
-                    self.phase[y, x] = 0
+        crossings = np.sum(np.diff(np.signbit(recent), axis=0), axis=0)
+        self.frequency = crossings / (10 * self.time_step) / 2
+        min_val = recent.min(axis=0)
+        max_val = recent.max(axis=0)
+        span = max_val - min_val
+        safe = np.where(span > 0, span, 1.0)
+        self.phase = np.where(span > 0, (self.current - min_val) / safe * 2 * np.pi, 0.0)
 
     def run_simulation(self, steps=100, visualize=False):
         """Run simulation for specified number of steps."""
