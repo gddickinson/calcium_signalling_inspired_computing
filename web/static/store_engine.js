@@ -73,11 +73,23 @@ export class Store {
   }
 }
 
+// Start of the first run of `length` quiet cells (activation < 0.1), else of the window with the lowest total activation
+function freeSpan(st, length) {
+  let run = 0;
+  for (let i = 0; i < st.size; i++) { run = st.activation[i] < 0.1 ? run + 1 : 0; if (run === length) return i - length + 1; }
+  let best = 0, bestSum = Infinity;
+  for (let i = 0; i + length <= st.size; i++) {
+    let s = 0; for (let k = i; k < i + length; k++) s += st.activation[k];
+    if (s < bestSum) { bestSum = s; best = i; }
+  }
+  return best;
+}
+
 export class MultiStore {
   constructor(rng) {
     this.rng = rng;
     this.stores = Object.fromEntries(Object.entries(STORE_SPECS).map(([k, s]) => [k, new Store(rng, s)]));
-    this.timeStep = 0; this.meanHistory = []; this.transfers = [];
+    this.timeStep = 0; this.meanHistory = []; this.transfers = []; this.writeLog = [];
   }
 
   update() {
@@ -109,22 +121,27 @@ export class MultiStore {
   }
 
   // priority: 'high' -> primary, 'medium' -> secondary, 'low' -> tertiary; scalars go to a random quiet cell
-  // (activation < 0.1), sequences are written from address 0
+  // (activation < 0.1), sequences to the first run of quiet cells long enough (writeLog records where)
   writeData(data, priority = 'auto') {
     if (priority === 'auto') priority = isSeq(data) && data.length > 100 ? 'low' : 'medium';
     const name = { high: 'primary', medium: 'secondary', low: 'tertiary' }[priority] || 'secondary', st = this.stores[name];
+    if (isSeq(data)) {
+      if (data.length > st.size) {
+        const ok = st.write({ start: 0, stop: st.size }, data.slice(0, st.size));
+        this.writeLog.push({ store: name, start: 0, length: st.size });
+        const [ok2] = this.writeData(Array.from(data.slice(st.size)), 'low');
+        return [ok && ok2, `${name} + overflow`];
+      }
+      const start = freeSpan(st, data.length), ok = st.write({ start, stop: start + data.length }, data);
+      this.writeLog.push({ store: name, start, length: data.length });
+      return [ok, name];
+    }
     const empty = [];
     for (let i = 0; i < st.size; i++) if (st.activation[i] < 0.1) empty.push(i);
     let address;
     if (empty.length) address = this.rng.choiceOf(empty);
     else { address = 0; for (let i = 1; i < st.size; i++) if (st.activation[i] < st.activation[address]) address = i; }
-    if (isSeq(data)) {
-      if (data.length > st.size) {
-        const ok = st.write({ start: 0, stop: st.size }, data.slice(0, st.size));
-        if (data.length > st.size) { const [ok2] = this.writeData(Array.from(data.slice(st.size)), 'low'); return [ok && ok2, `${name} + overflow`]; }
-      }
-      return [st.write({ start: 0, stop: data.length }, data), name];
-    }
+    this.writeLog.push({ store: name, start: address, length: 1 });
     return [st.write(address, data), name];
   }
 

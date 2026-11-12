@@ -20,6 +20,9 @@ def run(seed):
     c = MultiStoreComputer()
     writes = [c.write_data(d, priority=p) for d, p in [(0.9, "high"), ([0.5, 0.2, 0.7], "medium"),
                                                        (np.random.random(50), "low"), (0.95, "high")]]
+    for seq in ([0.2, 0.4, 0.6, 0.8], [0.3] * 6, list(np.random.random(5))):
+        writes.append(c.write_data(seq, priority="medium"))
+    log = [[w["store"], w["start"], w["length"]] for w in c.write_log]
     c.run_simulation(steps=25)
     transfers = [len(t) for t in c.cross_store_transfers]
     q = [{"source": r["source"], "confidence": r["confidence"], "result": r["result"]} for r in c.query(0.9)]
@@ -28,7 +31,7 @@ def run(seed):
     hm = {"writes": [[w["priority"], bool(w["success"]), w["store"]] for w in h["write_results"]],
           "retrievals": [[{"source": r["source"], "confidence": r["confidence"], "result": r["result"]} for r in rr["results"]]
                          for rr in h["retrieval_results"]]}
-    return {"seed": seed, "writes": [[bool(ok), s] for ok, s in writes], "transfers": transfers, "query": q,
+    return {"seed": seed, "writes": [[bool(ok), s] for ok, s in writes], "write_log": log, "transfers": transfers, "query": q,
             "state": state, "hm": hm}
 
 

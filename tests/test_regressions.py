@@ -103,3 +103,23 @@ def test_multistore_accepts_numpy_scalars():
     assert ok
     best = c.query(np.int64(1))[0]
     np.testing.assert_allclose(best['result'], [1.0, 0.8, 0.5])
+
+
+def test_multistore_sequences_get_distinct_addresses():
+    """write_data wrote every sequence from address 0, so a second sequence in the same store overwrote the first.
+    Sequences now go to the first run of quiet cells long enough to hold them; write_log records where."""
+    from multistore_computing.computer import MultiStoreComputer
+    np.random.seed(0)
+    c = MultiStoreComputer()
+    for s in c.stores.values():
+        s.reliability = 1.0
+    seqs = [[0.1 * k + 0.05 * i for i in range(10)] for k in range(1, 4)]
+    for seq in seqs:
+        ok, name = c.write_data(seq, priority='medium')
+        assert ok and name == 'secondary'
+    spans = [(w['start'], w['start'] + w['length']) for w in c.write_log]
+    assert spans == [(0, 10), (10, 20), (20, 30)]
+    store = c.stores['secondary']
+    for (a, b), seq in zip(spans, seqs):
+        got = np.array(store.read(slice(a, b)))
+        np.testing.assert_allclose(got[:, 0], seq)

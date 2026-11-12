@@ -9,7 +9,9 @@ for (const f of fixture('store').runs) {
   const rng = new NumpyRandom(f.seed), c = new MultiStore(rng);
   const writes = [[0.9, 'high'], [[0.5, 0.2, 0.7], 'medium'], [Array.from({ length: 50 }, () => rng.random()), 'low'], [0.95, 'high']]
     .map(([d, p]) => c.writeData(d, p));
+  for (const seq of [[0.2, 0.4, 0.6, 0.8], new Array(6).fill(0.3), Array.from({ length: 5 }, () => rng.random())]) writes.push(c.writeData(seq, 'medium'));
   near(writes, f.writes, 'writes');
+  near(c.writeLog.map(w => [w.store, w.start, w.length]), f.write_log, 'write log');
   c.run(25);
   near(c.transfers.map(t => t.length), f.transfers, 'transfers');
   near(pick(c.query(0.9)), f.query, 'query');

@@ -47,6 +47,7 @@ class MultiStoreComputer:
         self.time_step = 0
         self.store_activations = {}
         self.cross_store_transfers = []
+        self.write_log = []      # one entry per write_data: {'store', 'start', 'length'}
 
     def update(self):
         """Update the system for one time step."""
@@ -83,7 +84,11 @@ class MultiStoreComputer:
         self.cross_store_transfers.append(transfers)
 
     def write_data(self, data, priority='auto'):
-        """Write data to the system, selecting appropriate store."""
+        """Write data to the store chosen by priority (high: primary, medium: secondary, low: tertiary).
+
+        A scalar goes to a random quiet cell (activation < 0.1); a sequence to the first run of quiet cells long
+        enough to hold it (see _free_span). Where each write landed is appended to write_log.
+        """
         if priority == 'auto':
             if isinstance(data, (list, tuple, np.ndarray)) and len(data) > 100:
                 priority = 'low'
@@ -94,26 +99,43 @@ class MultiStoreComputer:
         store_map = {'high': 'primary', 'medium': 'secondary', 'low': 'tertiary'}
         store_name = store_map.get(priority, 'secondary')
         store = self.stores[store_name]
-        empty_indices = np.where(store.activation < 0.1)[0]
-        if len(empty_indices) > 0:
-            address = np.random.choice(empty_indices)
-        else:
-            address = np.argmin(store.activation)
-
         if isinstance(data, (list, tuple, np.ndarray)):
             if len(data) > store.size:
                 chunk_size = store.size
                 chunks = [data[i:i+chunk_size] for i in range(0, len(data), chunk_size)]
                 success = store.write(slice(0, chunk_size), chunks[0])
+                self.write_log.append({'store': store_name, 'start': 0, 'length': chunk_size})
                 if len(chunks) > 1:
                     remainder = [item for chunk in chunks[1:] for item in chunk]
                     overflow_success, _ = self.write_data(remainder, priority='low')
                     return success and overflow_success, f"{store_name} + overflow"
-            else:
-                success = store.write(slice(0, len(data)), data)
+                return success, store_name
+            start = self._free_span(store, len(data))
+            success = store.write(slice(start, start + len(data)), data)
+            self.write_log.append({'store': store_name, 'start': start, 'length': len(data)})
         else:
+            empty_indices = np.where(store.activation < 0.1)[0]
+            if len(empty_indices) > 0:
+                address = int(np.random.choice(empty_indices))
+            else:
+                address = int(np.argmin(store.activation))
             success = store.write(address, data)
+            self.write_log.append({'store': store_name, 'start': address, 'length': 1})
         return success, store_name
+
+    @staticmethod
+    def _free_span(store, length):
+        """Start of the first run of `length` quiet cells (activation < 0.1); if there is none, the start of the
+        window with the lowest total activation. (Sequences used to be written from address 0 every time, so a
+        second sequence in the same store overwrote the first.)"""
+        quiet = store.activation < 0.1
+        run = 0
+        for i, q in enumerate(quiet):
+            run = run + 1 if q else 0
+            if run == length:
+                return i - length + 1
+        window = np.convolve(store.activation, np.ones(length), mode='valid')
+        return int(np.argmin(window))
 
     def query(self, query_data):
         """Query the system with hierarchical search."""
