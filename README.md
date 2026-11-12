@@ -4,8 +4,6 @@
 
 This repository contains a collection of computational models inspired by calcium signaling dynamics in biological systems. These models demonstrate how principles from cellular calcium dynamics can inform novel computing paradigms with unique capabilities beyond traditional computing approaches.
 
-![CalciumComputing Logo](assets/calcium-computing-logo.png)
-
 ## Overview
 
 Calcium signaling represents one of the most versatile and widespread signaling systems in biology. The spatial and temporal organization of calcium dynamics enables cells to encode complex information processing tasks. This project explores how these principles can be adapted into computational frameworks with applications in machine learning, signal processing, fault-tolerant computing, and more.
@@ -22,7 +20,7 @@ This model demonstrates how the probability of signal activation can scale linea
 - Implementation of probabilistic logic operations
 
 ```bash
-python probabilistic_computing.py
+python probabilistic_computing/probabilistic_computing.py
 ```
 
 ### 2. Spatiotemporal Computing Inspired by Calcium Wave Propagation
@@ -35,7 +33,7 @@ This model implements a reaction-diffusion system where information is encoded i
 - Information encoding in spatial configurations
 
 ```bash
-python spatiotemporal_computing.py
+python spatiotemporal_computing/spatiotemporal_computing.py
 ```
 
 ### 3. Analog Computing with Calcium-Like Thresholds
@@ -48,7 +46,7 @@ This model creates threshold logic units with calcium-like activation properties
 - Analog memory capability
 
 ```bash
-python threshold_computing.py
+python threshold_computing/threshold_computing.py
 ```
 
 ### 4. Coordinated Recruitment Computing
@@ -61,7 +59,7 @@ This model demonstrates quorum sensing-like computation where elements remain do
 - Signal amplification through recruitment
 
 ```bash
-python coordinated_recruitment.py
+python coordinated_recruitment/coordinated_recruitment.py
 ```
 
 ### 5. Multi-Store Hybrid Computing Architecture
@@ -74,7 +72,7 @@ This model implements a hierarchical memory system with different store types in
 - Hybrid analog-digital processing
 
 ```bash
-python multistore_computing.py
+python multistore_computing/multistore_computing.py
 ```
 
 ### 6. Wave-Based Processing
@@ -83,22 +81,22 @@ This model demonstrates how information can be encoded in wave properties (ampli
 
 **Key Features:**
 - Pattern recognition through wave dynamics
-- Logic operations via wave interference
+- Logic-gate demos via wave interference (the gate set-up is fixed by the chosen operation; the input patterns are not read)
 - Signal filtering through resonant wave interactions
 - Information storage in persistent wave patterns
 
 ```bash
-python wave_computing.py
+python wave_based_computing/wave_based_computing.py
 ```
 
 ## Installation
 
 ```bash
 # Clone this repository
-git clone https://github.com/username/CalciumComputing.git
+git clone https://github.com/gddickinson/calcium_signalling_inspired_computing.git
 
 # Navigate to the repository directory
-cd CalciumComputing
+cd calcium_signalling_inspired_computing
 
 # Create and activate a virtual environment (optional but recommended)
 python -m venv venv
@@ -119,10 +117,12 @@ pip install -r requirements.txt
 
 ## Usage Examples
 
+Run these from the repository root (the model folders are importable packages).
+
 ### Probabilistic Computing
 
 ```python
-from calcium_computing.probabilistic import CalciumPuffComputing, StochasticComputing
+from probabilistic_computing import CalciumPuffComputing, StochasticComputing
 
 # Initialize the model
 model = CalciumPuffComputing(grid_size=50)
@@ -142,7 +142,7 @@ print(f"0.3 × 0.7 ≈ {result:.4f}")
 ### Wave-Based Computing
 
 ```python
-from calcium_computing.wave import WaveComputingMedium, WaveComputing
+from wave_based_computing import WaveComputingMedium, WaveComputing
 
 # Initialize medium
 medium = WaveComputingMedium(size=(100, 100))
@@ -194,7 +194,7 @@ If you use these models in your research, please cite:
   year = {2025},
   publisher = {GitHub},
   journal = {GitHub Repository},
-  howpublished = {\url{https://github.com/username/CalciumComputing}}
+  howpublished = {\url{https://github.com/gddickinson/calcium_signalling_inspired_computing}}
 }
 ```
 
