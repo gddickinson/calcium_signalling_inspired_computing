@@ -282,26 +282,31 @@ class StochasticComputing:
 
     def stochastic_subtract(self, a, b, iterations=1000):
         """
-        Subtract b from a using stochastic computing principles
-        Using AND NOT operation: a AND (NOT b)
+        Subtract b from a using stochastic computing principles: max(0, a - b).
+
+        Uses a AND (NOT b) on two *correlated* bitstreams (both thresholds applied to the
+        same random numbers u): the result bit is 1 when b <= u < a, which happens with
+        probability max(0, a - b). (On independent streams the same gate gives a * (1 - b).)
         """
         if not (0 <= a <= 1 and 0 <= b <= 1):
             raise ValueError("Inputs must be probabilities between 0 and 1")
 
-        # Generate independent bitstreams
-        bitstream_a = np.random.random(iterations) < a
-        bitstream_b = np.random.random(iterations) < b
+        # Correlated bitstreams: one shared random stream
+        u = np.random.random(iterations)
+        bitstream_a = u < a
+        bitstream_b = u < b
 
-        # a AND (NOT b) represents a * (1-b), which is equivalent to a-a*b or a*(1-b)
         result_stream = np.logical_and(bitstream_a, np.logical_not(bitstream_b))
 
-        # Return mean, with floor at 0 since probabilities can't be negative
         return max(0.0, result_stream.mean())
 
     def stochastic_divide(self, a, b, iterations=1000, epsilon=0.01):
         """
-        Divide a by b using stochastic computing principles
-        A simplified approximation using conditional probability
+        Divide a by b using stochastic computing principles: min(1, a / b).
+
+        Estimates the conditional probability P(a-bit | b-bit) on *correlated* bitstreams
+        (same random numbers u for both): P(u < a | u < b) = min(a, b) / b = min(1, a / b).
+        (On independent streams P(a | b) is just a.)
         """
         if not (0 <= a <= 1 and 0 <= b <= 1):
             raise ValueError("Inputs must be probabilities between 0 and 1")
@@ -309,9 +314,10 @@ class StochasticComputing:
         if b < epsilon:
             return 1.0  # Avoid division by very small numbers
 
-        # Generate independent bitstreams
-        bitstream_a = np.random.random(iterations) < a
-        bitstream_b = np.random.random(iterations) < b
+        # Correlated bitstreams: one shared random stream
+        u = np.random.random(iterations)
+        bitstream_a = u < a
+        bitstream_b = u < b
 
         # Count when a is 1 given that b is 1 (conditional probability)
         b_indices = np.where(bitstream_b)[0]
@@ -319,10 +325,8 @@ class StochasticComputing:
         if len(b_indices) == 0:
             return 0.0  # Avoid division by zero
 
-        # Calculate conditional probability P(a|b) which approximates a/b
         conditional_prob = bitstream_a[b_indices].mean()
 
-        # Cap at 1.0 since we're dealing with probabilities
         return min(1.0, conditional_prob)
 
     def run_samples(self, iterations=10000):
