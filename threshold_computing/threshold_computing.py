@@ -42,6 +42,13 @@ class ThresholdComputingUnit:
         self.activation = 0.0  # Output activation level
         self.refractory_countdown = 0  # Refractory period counter
         self.internal_state = 0.0  # Internal memory (analogous to slow calcium buffers)
+
+    def reset(self):
+        """Return the unit to rest (parameters are kept)."""
+        self.membrane_potential = 0.0
+        self.activation = 0.0
+        self.refractory_countdown = 0
+        self.internal_state = 0.0
     
     def update(self, input_signal):
         """
@@ -141,6 +148,13 @@ class ThresholdComputingNetwork:
         
         return connections
     
+    def reset(self):
+        """Return every unit to rest and clear the history (connections and unit parameters are kept)."""
+        for unit in self.units.flat:
+            unit.reset()
+        self.activation_history = []
+        self.membrane_potential_history = []
+
     def set_input(self, input_pattern):
         """Set input to the network"""
         # Validate input pattern shape
@@ -331,90 +345,11 @@ class ThresholdComputingNetwork:
         
         return ani
 
-# Example application: Signal integration and threshold-based computation
-class ThresholdLogicComputer:
-    def __init__(self, network):
-        self.network = network
-    
-    def temporal_integration(self, input_sequence, duration=50):
-        """
-        Demonstrate temporal integration of weak signals.
-        
-        Parameters:
-        - input_sequence: Sequence of input patterns
-        - duration: Duration to run the simulation
-        
-        Returns:
-        - output_sequence: Sequence of outputs
-        """
-        # Pad input sequence if needed
-        if len(input_sequence) < duration:
-            padded_sequence = input_sequence + [np.zeros(len(self.network.input_region))] * (duration - len(input_sequence))
-        else:
-            padded_sequence = input_sequence[:duration]
-        
-        # Run simulation
-        outputs = self.network.run_simulation(steps=duration, input_patterns=padded_sequence)
-        
-        return outputs
-    
-    def threshold_detection(self, signal_strengths, duration_per_signal=20):
-        """
-        Demonstrate threshold detection with varying signal strengths.
-        
-        Parameters:
-        - signal_strengths: List of signal strengths to test
-        - duration_per_signal: Duration to apply each signal
-        
-        Returns:
-        - detection_results: Whether each signal was detected
-        """
-        detection_results = []
-        
-        for strength in signal_strengths:
-            # Create input pattern with given strength
-            input_pattern = [strength] * len(self.network.input_region)
-            input_sequence = [input_pattern] * duration_per_signal
-            
-            # Run simulation
-            outputs = self.network.run_simulation(steps=duration_per_signal, input_patterns=input_sequence)
-            
-            # Check if output exceeded detection threshold (0.5)
-            max_output = max([max(output) for output in outputs])
-            detected = max_output > 0.5
-            
-            detection_results.append((strength, max_output, detected))
-        
-        return detection_results
-    
-    def analog_memory(self, input_values, retention_time=30):
-        """
-        Demonstrate analog memory capabilities.
-        
-        Parameters:
-        - input_values: Input values to store
-        - retention_time: How long to check retention
-        
-        Returns:
-        - memory_trace: How values are retained over time
-        """
-        memory_traces = []
-        
-        for value in input_values:
-            # Set input
-            input_pattern = [value] * len(self.network.input_region)
-            
-            # Apply input for 5 steps then remove
-            input_sequence = [input_pattern] * 5 + [np.zeros(len(self.network.input_region))] * (retention_time - 5)
-            
-            # Run simulation
-            outputs = self.network.run_simulation(steps=retention_time, input_patterns=input_sequence)
-            
-            # Track output over time
-            output_trace = [max(output) for output in outputs]
-            memory_traces.append((value, output_trace))
-        
-        return memory_traces
+# Example applications (temporal integration, threshold detection, analog memory) live in threshold_logic.py
+if __package__:
+    from .threshold_logic import ThresholdLogicComputer
+else:  # run as a script
+    from threshold_logic import ThresholdLogicComputer  # noqa: E402
 
 # Example usage
 if __name__ == "__main__":
