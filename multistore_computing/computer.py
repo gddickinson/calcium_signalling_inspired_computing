@@ -6,6 +6,8 @@ hierarchical query search. Provides visualization of store states
 and activation history.
 """
 
+import numbers
+
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -117,7 +119,7 @@ class MultiStoreComputer:
         """Query the system with hierarchical search."""
         results = []
         if not isinstance(query_data, (list, tuple, np.ndarray)) or len(query_data) != 3:
-            if isinstance(query_data, (int, float)):
+            if isinstance(query_data, numbers.Real):  # Python and numpy scalars
                 query_vector = [float(query_data), float(query_data) * 0.8, float(query_data) * 0.5]
             else:
                 query_vector = [0.5, 0.4, 0.3]

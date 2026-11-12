@@ -5,6 +5,8 @@ Models one calcium-inspired storage compartment with read/write
 operations, activation decay, and query-by-similarity.
 """
 
+import numbers
+
 import numpy as np
 from collections import deque
 
@@ -74,7 +76,7 @@ class CalciumStore:
         self.access_history.append(('write', address))
         if data is None:
             self.contents[address] = [0, 0, 0]
-        elif isinstance(data, (int, float)):
+        elif isinstance(data, numbers.Real):  # Python and numpy scalars
             value = min(1.0, max(0.0, float(data)))
             self.contents[address] = [value, value * 0.8, value * 0.5]
         elif len(data) == 3:
