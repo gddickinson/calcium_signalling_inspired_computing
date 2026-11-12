@@ -57,13 +57,15 @@ class ThresholdComputingUnit:
         if self.refractory_countdown > 0:
             self.refractory_countdown -= 1
         
+        # Fraction of the refractory period still to run (0 when there is no refractory period)
+        refractory_fraction = (self.refractory_countdown / self.refractory_period
+                               if self.refractory_period > 0 else 0.0)
+
         # Calculate effective threshold (higher during refractory period)
-        effective_threshold = self.threshold
-        if self.refractory_countdown > 0:
-            effective_threshold += 0.2 * (self.refractory_countdown / self.refractory_period)
+        effective_threshold = self.threshold + 0.2 * refractory_fraction
         
         # Integrate input signal (with influence from internal state)
-        integration_factor = self.integration_rate * (1.0 - 0.8 * (self.refractory_countdown / self.refractory_period))
+        integration_factor = self.integration_rate * (1.0 - 0.8 * refractory_fraction)
         self.membrane_potential += integration_factor * input_signal + 0.01 * self.internal_state
         
         # Apply leakage
