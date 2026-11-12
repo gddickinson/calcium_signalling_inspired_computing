@@ -24,8 +24,16 @@ George asked to fix the open problems. Each in its own "Fix ..." commit with tes
 - Web: wave engine re-ported (fixture regenerated, gates included in the JS-vs-Python check), waves page has gate
   inputs A/B, wave-speed slider, CFL readout; recognition table updated.
 
-Still open: `MultiStoreComputer.write_data` writes every sequence from address 0; the wave PCA-signature
-pattern_recognition (WaveComputing) still scores ~0.46 for everything (not part of this request).
+Then (same day) the last two:
+- **Multi-store sequence writes** (`computer.py`): sequences went to address 0 every time and overwrote each other;
+  now the first run of quiet cells long enough (else the least active window); `write_log` records each write.
+  Regression test stores three sequences and reads each back; store_engine.js and its fixture updated.
+- **Wave pattern matching** (`wave_computing.py`): the encoding (pixels strictly above the 80th percentile) selected
+  no pixels for the demo's clean references, so all reference media were empty; and the PCA-statistics signature
+  scored ~0.46 for every pair. Now: sources at pixels above the middle of the value range; signature = RMS amplitude
+  map (5 x 5 blocks, last 20 frames, mean removed, unit length); match = best correlation >= 0.9, else no match.
+  Noisy references score >= 0.98, a cross and a corner block <= 0.68 (`tests/test_wave_recognition.py`, 50 and 100
+  steps). Not ported to the web engine (Python only, like before).
 
 ## 2026-11-11 — web interface, static site, bug fixes (branch `web-interface`, Claude Code)
 

@@ -109,8 +109,12 @@ if __name__ == "__main__":
     # Reference patterns
     reference_patterns = [circle, square, diagonal]
 
-    # Test patterns
-    test_patterns = [test_circle, test_square, test_diagonal]
+    # Test patterns: noisy copies of the references, and a cross that is not a reference
+    cross = np.zeros(pattern_size)
+    cross[9:11, :] = 1.0
+    cross[:, 9:11] = 1.0
+    test_patterns = [test_circle, test_square, test_diagonal, cross + np.random.normal(0, 0.1, pattern_size)]
+    names = ['circle', 'square', 'diagonal']
 
     # Perform pattern recognition
     recognition_results = wave_computer.pattern_recognition(
@@ -120,9 +124,11 @@ if __name__ == "__main__":
     )
 
     # Display results
-    for i, result in enumerate(recognition_results):
-        best_match = result['matches'][0]
-        print(f"Test pattern {i} best matches reference {best_match['reference_index']} with similarity {best_match['similarity']:.3f}")
+    for name, result in zip(names + ['cross (not a reference)'], recognition_results):
+        best = result['best_match']
+        top = result['matches'][0]
+        print(f"Test {name}: {'matches ' + names[best] if best is not None else 'no match'} "
+              f"(best correlation {top['similarity']:.3f} with {names[top['reference_index']]})")
 
     # Demo: Wave Logic Gates
     print("\nDemonstrating wave logic gates...")

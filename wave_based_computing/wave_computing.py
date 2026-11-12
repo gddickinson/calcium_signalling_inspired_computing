@@ -6,7 +6,6 @@ signal filtering using the WaveComputingMedium as a substrate.
 """
 
 import numpy as np
-from sklearn.decomposition import PCA
 
 from .wave_medium import WaveComputingMedium
 
@@ -17,107 +16,87 @@ class WaveComputing:
     def __init__(self, medium: WaveComputingMedium):
         self.medium = medium
 
-    def pattern_recognition(self, test_patterns, reference_patterns, simulation_steps=100):
+    MATCH_THRESHOLD = 0.9      # minimum signature correlation for a match
+    SIGNATURE_BLOCK = 5        # cells per side of the blocks the amplitude map is averaged over
+    SIGNATURE_FRAMES = 20      # frames the RMS amplitude is taken over
+
+    def pattern_recognition(self, test_patterns, reference_patterns, simulation_steps=100,
+                            match_threshold=None):
         """
         Use wave dynamics for pattern recognition.
+
+        Each pattern drives its own medium (see _encode_pattern_as_sources); its signature is the map of RMS wave
+        amplitude over the last frames (_extract_wave_signature). A test pattern matches the reference whose
+        signature correlates best with its own, if that correlation reaches match_threshold (default 0.9);
+        otherwise it is reported as unknown.
 
         Parameters:
         - test_patterns: List of patterns to recognize
         - reference_patterns: Known reference patterns
         - simulation_steps: Number of steps to run for each pattern
+        - match_threshold: minimum correlation for a match
 
         Returns:
-        - recognition_results: Matching results
+        - per test pattern: test_index, matches (reference_index, similarity = correlation in [-1, 1], best
+          first), best_match (reference index or None) and wave_signature
         """
+        threshold = self.MATCH_THRESHOLD if match_threshold is None else match_threshold
+
+        def signature(pattern):
+            medium = self._new_medium()
+            self._encode_pattern_as_sources(medium, pattern)
+            medium.run_simulation(steps=simulation_steps)
+            return self._extract_wave_signature(medium)
+
+        ref_signatures = [signature(p) for p in reference_patterns]
         results = []
         for test_idx, test_pattern in enumerate(test_patterns):
-            medium = self._new_medium()
-            self._encode_pattern_as_sources(medium, test_pattern)
-            medium.run_simulation(steps=simulation_steps)
-            test_signature = self._extract_wave_signature(medium)
-
-            pattern_matches = []
-            for ref_idx, ref_pattern in enumerate(reference_patterns):
-                ref_medium = self._new_medium()
-                self._encode_pattern_as_sources(ref_medium, ref_pattern)
-                ref_medium.run_simulation(steps=simulation_steps)
-                ref_signature = self._extract_wave_signature(ref_medium)
-                similarity = self._calculate_signature_similarity(test_signature, ref_signature)
-                pattern_matches.append({
-                    'reference_index': ref_idx,
-                    'similarity': similarity
-                })
-            pattern_matches.sort(key=lambda x: x['similarity'], reverse=True)
+            test_signature = signature(test_pattern)
+            pattern_matches = sorted(
+                ({'reference_index': i, 'similarity': self._calculate_signature_similarity(test_signature, ref)}
+                 for i, ref in enumerate(ref_signatures)),
+                key=lambda x: x['similarity'], reverse=True)
+            best = pattern_matches[0] if pattern_matches else None
             results.append({
                 'test_index': test_idx,
                 'matches': pattern_matches,
+                'best_match': best['reference_index'] if best and best['similarity'] >= threshold else None,
                 'wave_signature': test_signature
             })
         return results
 
     def _encode_pattern_as_sources(self, medium, pattern):
-        """Encode a pattern as wave sources."""
+        """Encode a pattern as wave sources: one source per pixel above the middle of the pattern's value range
+        (amplitude 0.5 x pixel value, frequency 0.5 to 1.0 from left to right). (The old rule, pixels strictly
+        above the 80th percentile, selected no pixels at all for binary patterns covering more than 20% of the
+        grid, and a different subset for noisy copies.)"""
         height, width = pattern.shape
         scale_y = medium.height / height
         scale_x = medium.width / width
-        threshold = np.percentile(pattern, 80)
-        y_indices, x_indices = np.where(pattern > threshold)
+        lo, hi = float(np.min(pattern)), float(np.max(pattern))
+        y_indices, x_indices = np.where(pattern > lo + 0.5 * (hi - lo))
         for y, x in zip(y_indices, x_indices):
-            medium_x = int(x * scale_x)
-            medium_y = int(y * scale_y)
-            intensity = pattern[y, x]
-            amplitude = 0.5 * intensity
-            frequency = 0.5 + 0.5 * (x / width)
-            medium.add_source((medium_x, medium_y), amplitude, frequency)
+            medium.add_source((int(x * scale_x), int(y * scale_y)), 0.5 * pattern[y, x], 0.5 + 0.5 * (x / width))
 
     def _extract_wave_signature(self, medium):
-        """Extract a signature from wave dynamics for pattern matching."""
-        if len(medium.history) < 10:
-            return np.zeros(5)
-        recent = np.array(medium.history[-10:])
-        n_samples = recent.shape[0]
-        flat_data = recent.reshape(n_samples, -1)
-        if np.std(flat_data) < 1e-6:
-            flat_data += np.random.normal(0, 1e-5, flat_data.shape)
-        try:
-            pca = PCA(n_components=min(8, n_samples))
-            pca.fit(flat_data)
-            signature = []
-            for component, variance in zip(pca.components_, pca.explained_variance_):
-                signature.extend([
-                    variance,
-                    np.mean(component),
-                    np.std(component),
-                    np.percentile(component, 10),
-                    np.percentile(component, 90),
-                    np.max(component) - np.min(component)
-                ])
-            last_frame = medium.current
-            signature.extend([
-                np.mean(last_frame),
-                np.std(last_frame),
-                np.max(last_frame),
-                np.min(last_frame)
-            ])
-        except Exception as e:
-            print(f"PCA signature extraction failed: {e}")
-            signature = [0.0] * 52
-        if np.std(signature) > 0:
-            signature = (signature - np.mean(signature)) / np.std(signature)
-        return np.array(signature)
+        """Signature of a run: RMS wave amplitude over the last SIGNATURE_FRAMES frames, averaged over
+        SIGNATURE_BLOCK x SIGNATURE_BLOCK cell blocks, mean removed, scaled to unit length. (It replaces summary
+        statistics of PCA components, which came out nearly the same for every pattern.)"""
+        frames = np.array(medium.history[-self.SIGNATURE_FRAMES:])
+        if len(frames) == 0:
+            return np.zeros(1)
+        rms = np.sqrt((frames ** 2).mean(axis=0))
+        b = self.SIGNATURE_BLOCK
+        hb, wb = rms.shape[0] // b, rms.shape[1] // b
+        blocks = rms[:hb * b, :wb * b].reshape(hb, b, wb, b).mean(axis=(1, 3)).ravel()
+        blocks = blocks - blocks.mean()
+        norm = np.linalg.norm(blocks)
+        return blocks / norm if norm > 0 else blocks
 
     def _calculate_signature_similarity(self, sig1, sig2):
-        """Calculate similarity between two wave signatures."""
-        min_len = min(len(sig1), len(sig2))
-        sig1 = sig1[:min_len]
-        sig2 = sig2[:min_len]
-        sig1_norm = (sig1 - np.mean(sig1)) / (np.std(sig1) + 1e-6)
-        sig2_norm = (sig2 - np.mean(sig2)) / (np.std(sig2) + 1e-6)
-        dot_product = np.dot(sig1_norm, sig2_norm)
-        magnitude1 = np.sqrt(np.dot(sig1_norm, sig1_norm))
-        magnitude2 = np.sqrt(np.dot(sig2_norm, sig2_norm))
-        similarity = dot_product / (magnitude1 * magnitude2 + 1e-6)
-        return (similarity + 1) / 2
+        """Correlation of two unit-length, mean-removed signatures (1 = same amplitude map)."""
+        n = min(len(sig1), len(sig2))
+        return float(np.dot(sig1[:n], sig2[:n]))
 
     # Gate set-up: one line of sources per input, equidistant from the readout point at the grid centre
     GATE_AMPLITUDE = 0.3

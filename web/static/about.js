@@ -26,7 +26,7 @@ python scripts/build_static.py   # static site in site/</pre>
   the fixtures still match the current Python.</p>
   <div class="scroll"><table><tr><th>JS engine</th><th>Reproduces</th><th>Fixture</th></tr>
   ${list(checks, c => `<tr><td><code>${esc(c.engine)}</code></td><td>${esc(c.python)}</td><td><code>${esc(c.fixture)}</code>${c.runs ? ` (${c.runs} runs)` : ''}</td></tr>`)}</table></div>
-  <p class="small mute">Not ported: the PCA-based analyses (spatiotemporal PCA summaries, wave pattern recognition by PCA
+  <p class="small mute">Not ported: the PCA-based analyses (spatiotemporal PCA summaries, wave medium spectral analysis), wave pattern recognition (amplitude-map
   signatures) and the matplotlib figures. Pattern recognition for model 2 is shown from a Python run.</p>
   <h2>Scientific scope</h2>
   <p>These are abstract computing schemes with rules borrowed from calcium signalling; all quantities are dimensionless
