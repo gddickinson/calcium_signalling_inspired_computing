@@ -2,8 +2,11 @@
 Probabilistic Computing Based on Calcium Puff Dynamics
 
 This simulation models a computational system inspired by calcium puff dynamics,
-where the probability of signal activation scales linearly with the number of
-channels (similar to how calcium puff probability scales with IP3R cluster size).
+asking whether the probability of signal activation scales with the number of
+channels (as calcium puff probability does with IP3R cluster size). Measured: it
+increases with channel density, but at the default decay rate the refractory
+threshold keeps it at a few percent per step (fitted slope ~0.03); with fast
+decay (decay_rate=0.5) it is close to linear (slope ~0.7).
 
 The model demonstrates how this biological principle can be applied to create
 stochastic computing elements with predictable probabilities.

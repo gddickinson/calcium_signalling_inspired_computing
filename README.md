@@ -12,11 +12,13 @@ Calcium signaling represents one of the most versatile and widespread signaling 
 
 ### 1. Probabilistic Computing Based on Calcium Puff Dynamics
 
-This model demonstrates how the probability of signal activation can scale linearly with the number of processing elements, similar to how calcium puff probability scales with IP3R receptor cluster size.
+This model asks whether the probability of signal activation scales with the density of processing elements, as calcium puff probability does with IP3R cluster size. Each grid site fires with probability equal to its "channel density" unless its signal is still above a refractory threshold; firing adds signal, which spreads to neighbours and decays.
+
+Measured response: activation probability rises with density, but because the refractory threshold blocks most sites at the default decay rate (0.95), it stays at a few percent per step (about 0.02 to 0.05 across densities 0.05 to 0.95; fitted slope about 0.02 to 0.03, correlation about 0.8, seeds 42, 1 and 2, 500 steps). With faster decay (decay_rate=0.5) the response is close to linear (slope about 0.7, correlation 0.98).
 
 **Key Features:**
-- Stochastic computing with predictable probabilities
-- Linear relationship between element density and activation probability
+- Stochastic computing with predictable probabilities (bitstream multiply, add, subtract, divide)
+- Activation probability that increases with element density (near-linear only with fast signal decay)
 - Implementation of probabilistic logic operations
 
 ```bash
