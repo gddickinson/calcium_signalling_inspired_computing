@@ -22,7 +22,8 @@ class WaveComputingMedium:
         Initialize a wave computing medium with specified properties.
 
         Parameters:
-        - size: Size of the 2D grid
+        - size: Size of the 2D grid as (width, height); arrays have shape (height, width)
+          and are indexed [y, x]
         - boundary: Boundary condition ('absorbing', 'reflecting', 'periodic')
         - damping: Wave damping factor
         - diffusion: Diffusion coefficient
@@ -30,6 +31,7 @@ class WaveComputingMedium:
         - time_step: Time step for simulation
         """
         self.width, self.height = size
+        shape = (self.height, self.width)
         self.boundary = boundary
         self.damping = damping
         self.diffusion = diffusion
@@ -37,17 +39,17 @@ class WaveComputingMedium:
         self.time_step = time_step
 
         # Initialize wave state variables
-        self.current = np.zeros(size)
-        self.previous = np.zeros(size)
-        self.frequency = np.zeros(size)
-        self.phase = np.zeros(size)
+        self.current = np.zeros(shape)
+        self.previous = np.zeros(shape)
+        self.frequency = np.zeros(shape)
+        self.phase = np.zeros(shape)
 
         # Create diffusion kernel
         self.kernel = self._create_diffusion_kernel()
 
         # Initialize wave sources and obstacles
         self.sources = []
-        self.obstacles = np.zeros(size, dtype=bool)
+        self.obstacles = np.zeros(shape, dtype=bool)
 
         # Resonant regions with specific frequency responses
         self.resonant_regions = {}
