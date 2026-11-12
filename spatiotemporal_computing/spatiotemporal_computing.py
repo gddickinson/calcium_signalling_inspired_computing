@@ -294,8 +294,9 @@ class PatternRecognitionComputer:
         
         # For each pattern, compute its graph representation
         for name, pattern in patterns.items():
-            # Initialize model with the pattern
+            # Initialize model with the pattern (and a history of this run only)
             self.model.state = pattern.copy()
+            self.model.history = []
             
             # Run simulation to see how pattern evolves
             self.model.run_simulation(steps=20)
@@ -338,8 +339,9 @@ class PatternRecognitionComputer:
         Returns:
         - Best matching pattern name and similarity score
         """
-        # Initialize model with input pattern
+        # Initialize model with input pattern (and a history of this run only)
         self.model.state = input_pattern.copy()
+        self.model.history = []
         
         # Run simulation
         self.model.run_simulation(steps=steps)
