@@ -127,23 +127,16 @@ if __name__ == "__main__":
     # Demo: Wave Logic Gates
     print("\nDemonstrating wave logic gates...")
 
-    # Test AND gate
-    and_result = wave_computer.wave_logic_gates(
-        input_patterns=[np.ones((10, 10)), np.ones((10, 10))],
-        operation='and'
-    )
-
-    if and_result:
-        print(f"AND gate result: {and_result['result_value']:.3f}")
-
-    # Test OR gate
-    or_result = wave_computer.wave_logic_gates(
-        input_patterns=[np.ones((10, 10)), np.zeros((10, 10))],
-        operation='or'
-    )
-
-    if or_result:
-        print(f"OR gate result: {or_result['result_value']:.3f}")
+    # Truth tables: each input pattern is a bit (pattern mean > 0.5)
+    for operation in ('and', 'or', 'xor'):
+        rows = []
+        for a_bit, b_bit in [(0, 0), (0, 1), (1, 0), (1, 1)]:
+            gate = wave_computer.wave_logic_gates(
+                input_patterns=[np.full((10, 10), float(a_bit)), np.full((10, 10), float(b_bit))],
+                operation=operation
+            )
+            rows.append(f"{a_bit}{b_bit}->{int(gate['output'])} ({gate['result_value']:.3f})")
+        print(f"{operation.upper()} gate: " + ", ".join(rows))
 
     # Demo: Wave Memory
     print("\nDemonstrating wave memory...")

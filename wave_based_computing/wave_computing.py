@@ -31,26 +31,14 @@ class WaveComputing:
         """
         results = []
         for test_idx, test_pattern in enumerate(test_patterns):
-            medium = WaveComputingMedium(
-                size=(self.medium.width, self.medium.height),
-                boundary=self.medium.boundary,
-                damping=self.medium.damping,
-                diffusion=self.medium.diffusion,
-                nonlinearity=self.medium.nonlinearity
-            )
+            medium = self._new_medium()
             self._encode_pattern_as_sources(medium, test_pattern)
             medium.run_simulation(steps=simulation_steps)
             test_signature = self._extract_wave_signature(medium)
 
             pattern_matches = []
             for ref_idx, ref_pattern in enumerate(reference_patterns):
-                ref_medium = WaveComputingMedium(
-                    size=(self.medium.width, self.medium.height),
-                    boundary=self.medium.boundary,
-                    damping=self.medium.damping,
-                    diffusion=self.medium.diffusion,
-                    nonlinearity=self.medium.nonlinearity
-                )
+                ref_medium = self._new_medium()
                 self._encode_pattern_as_sources(ref_medium, ref_pattern)
                 ref_medium.run_simulation(steps=simulation_steps)
                 ref_signature = self._extract_wave_signature(ref_medium)
@@ -131,83 +119,98 @@ class WaveComputing:
         similarity = dot_product / (magnitude1 * magnitude2 + 1e-6)
         return (similarity + 1) / 2
 
-    def wave_logic_gates(self, input_patterns, operation='and', simulation_steps=50):
+    # Gate set-up: one line of sources per input, equidistant from the readout point at the grid centre
+    GATE_AMPLITUDE = 0.3
+    GATE_FREQUENCY = 0.5
+    GATE_THRESHOLDS = {'and': 1.5, 'or': 0.5, 'xor': 0.5}   # x the single-input readout
+
+    def _new_medium(self, **overrides):
+        """A fresh medium with this computer's grid and physical parameters (overrides win)."""
+        kw = dict(size=(self.medium.width, self.medium.height), boundary=self.medium.boundary,
+                  damping=self.medium.damping, wave_speed=self.medium.wave_speed,
+                  nonlinearity=self.medium.nonlinearity, time_step=self.medium.time_step)
+        kw.update(overrides)
+        return WaveComputingMedium(**kw)
+
+    def gate_medium(self, bits, operation):
+        """Medium for a gate: input A is a line of sources at x = 5 (rows H/4..3H/4), input B a line at y = 5
+        (columns W/4..3W/4); a line is switched on when its bit is 1. B is in phase with A for AND/OR and in
+        antiphase for XOR, so at the centre (equidistant from both lines on a square grid) the two waves add
+        or cancel."""
+        medium = self._new_medium(boundary='absorbing')
+        phase_b = np.pi if operation == 'xor' else 0.0
+        if bits[0]:
+            for y in range(medium.height // 4, 3 * medium.height // 4):
+                medium.add_source((5, y), self.GATE_AMPLITUDE, self.GATE_FREQUENCY, phase=0.0)
+        if bits[1]:
+            for x in range(medium.width // 4, 3 * medium.width // 4):
+                medium.add_source((x, 5), self.GATE_AMPLITUDE, self.GATE_FREQUENCY, phase=phase_b)
+        return medium
+
+    @staticmethod
+    def gate_readout(medium, window=20):
+        """Wave amplitude at the centre: largest |mean of the 3x3 centre cells| over the last `window` frames
+        (20 frames = one period at the gate frequency with time_step 0.1)."""
+        cx, cy = medium.width // 2, medium.height // 2
+        frames = medium.history[-window:]
+        if not frames:
+            return 0.0
+        return float(max(abs(f[cy - 1:cy + 2, cx - 1:cx + 2].mean()) for f in frames))
+
+    def _gate_reference(self, simulation_steps):
+        """Readout with only input A on (cached per grid and parameters): the unit for the thresholds."""
+        key = (self.medium.width, self.medium.height, self.medium.damping, self.medium.wave_speed,
+               self.medium.nonlinearity, self.medium.time_step, simulation_steps)
+        cache = self.__dict__.setdefault('_gate_refs', {})
+        if key not in cache:
+            ref = self.gate_medium((True, False), 'or')
+            ref.run_simulation(steps=simulation_steps)
+            cache[key] = self.gate_readout(ref)
+        return cache[key]
+
+    def wave_logic_gates(self, input_patterns, operation='and', simulation_steps=100):
         """
         Implement logic gates using wave interference.
 
-        Note: the gate's sources, resonant region and readout are fixed by
-        `operation`; the contents of `input_patterns` are not used (only that at
-        least two are given), so the result does not depend on the input values.
+        Each of the first two input patterns is read as a bit (pattern mean > 0.5) that switches a line of
+        sources on or off (see gate_medium). The output is the wave amplitude at the grid centre compared with
+        the amplitude one input alone produces there (the reference): AND needs more than 1.5x the reference
+        (both waves arriving in phase), OR more than 0.5x, and XOR more than 0.5x with input B in antiphase, so
+        that two active inputs cancel at the centre.
 
         Parameters:
-        - input_patterns: List of input patterns (at least two; values unused)
+        - input_patterns: List of at least two input patterns (arrays; bit = mean > 0.5)
         - operation: Logic operation ('and', 'or', 'xor')
-        - simulation_steps: Number of simulation steps
+        - simulation_steps: Number of simulation steps (the waves need ~(W/2 - 5) / wave_speed time units
+          to reach the centre)
 
         Returns:
-        - output_pattern: Result of the operation
+        - dict with operation, inputs (bits), output (bool), result_value (centre amplitude), reference,
+          threshold, output_pattern and simulation_frames; None if fewer than two inputs
         """
         if len(input_patterns) < 2:
             return None
-        medium = WaveComputingMedium(
-            size=(self.medium.width, self.medium.height),
-            boundary=self.medium.boundary,
-            damping=self.medium.damping,
-            diffusion=self.medium.diffusion,
-            nonlinearity=self.medium.nonlinearity
-        )
-        if operation == 'and':
-            for y in range(medium.height // 4, 3 * medium.height // 4):
-                medium.add_source((5, y), 0.3, 0.5, phase=0)
-            for x in range(medium.width // 4, 3 * medium.width // 4):
-                medium.add_source((x, 5), 0.3, 0.5, phase=0)
-            center_x, center_y = medium.width // 2, medium.height // 2
-            medium.add_resonant_region(
-                center_x - 10, center_x + 10,
-                center_y - 10, center_y + 10,
-                frequency=0.5
-            )
-        elif operation == 'or':
-            for y in range(medium.height // 4, 3 * medium.height // 4):
-                medium.add_source((5, y), 0.2, 0.7, phase=0)
-            for x in range(medium.width // 4, 3 * medium.width // 4):
-                medium.add_source((x, 5), 0.2, 0.7, phase=0)
-            center_x, center_y = medium.width // 2, medium.height // 2
-            medium.add_resonant_region(
-                center_x - 15, center_x + 15,
-                center_y - 15, center_y + 15,
-                frequency=0.7
-            )
-        elif operation == 'xor':
-            for y in range(medium.height // 4, 3 * medium.height // 4):
-                medium.add_source((5, y), 0.3, 0.6, phase=0)
-            for x in range(medium.width // 4, 3 * medium.width // 4):
-                medium.add_source((x, 5), 0.3, 0.6, phase=np.pi)
-            medium.nonlinearity = 0.2
-
+        if operation not in self.GATE_THRESHOLDS:
+            raise ValueError(f"Unknown operation {operation!r}; use 'and', 'or' or 'xor'")
+        bits = [bool(float(np.mean(p)) > 0.5) for p in input_patterns[:2]]
+        medium = self.gate_medium(bits, operation)
         frames = medium.run_simulation(steps=simulation_steps, visualize=True)
-        center_x, center_y = medium.width // 2, medium.height // 2
-        region_size = 10
-        x_min = max(0, center_x - region_size)
-        x_max = min(medium.width, center_x + region_size)
-        y_min = max(0, center_y - region_size)
-        y_max = min(medium.height, center_y + region_size)
+        result_value = self.gate_readout(medium)
+        reference = self._gate_reference(simulation_steps)
+        threshold = self.GATE_THRESHOLDS[operation] * reference
+        output = bool(result_value > threshold)
 
-        last_frames = medium.history[-10:]
-        if not last_frames:
-            return None
-        center_activations = [
-            np.max(np.abs(frame[y_min:y_max, x_min:x_max]))
-            for frame in last_frames
-        ]
-        result_value = np.max(center_activations)
-
-        output = np.zeros((medium.height, medium.width))
-        output[y_min:y_max, x_min:x_max] = result_value
+        cx, cy = medium.width // 2, medium.height // 2
+        output_pattern = np.zeros((medium.height, medium.width))
+        output_pattern[max(0, cy - 10):cy + 10, max(0, cx - 10):cx + 10] = result_value
         return {
             'operation': operation,
+            'inputs': bits,
+            'output': output,
             'result_value': result_value,
-            'output_pattern': output,
+            'reference': reference,
+            'threshold': threshold,
+            'output_pattern': output_pattern,
             'simulation_frames': frames
         }
 
@@ -218,13 +221,7 @@ class WaveComputing:
         memory element at that position plus 0.3 * twice the mean wave activity
         around it, so most of the readout comes from the stored number itself.
         """
-        medium = WaveComputingMedium(
-            size=(self.medium.width, self.medium.height),
-            boundary='absorbing',
-            damping=0.995,
-            diffusion=0.1,
-            nonlinearity=0.05
-        )
+        medium = self._new_medium(boundary='absorbing', damping=0.995, nonlinearity=0.05)
         data_length = len(input_data)
         spacing = medium.width // (data_length + 1)
         for i, value in enumerate(input_data):
@@ -277,12 +274,7 @@ class WaveComputing:
 
     def wave_filter(self, input_signal, filter_type='lowpass', cutoff_frequency=0.5, simulation_steps=100):
         """Filter a 1D signal using wave dynamics."""
-        medium = WaveComputingMedium(
-            size=(self.medium.width, self.medium.height),
-            boundary='absorbing',
-            damping=0.99,
-            diffusion=0.1
-        )
+        medium = self._new_medium(boundary='absorbing', damping=0.99, nonlinearity=0.1)
         signal_length = len(input_signal)
         signal_scale = min(1.0, medium.height / signal_length)
         for i, value in enumerate(input_signal):
