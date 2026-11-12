@@ -135,8 +135,12 @@ class WaveComputing:
         """
         Implement logic gates using wave interference.
 
+        Note: the gate's sources, resonant region and readout are fixed by
+        `operation`; the contents of `input_patterns` are not used (only that at
+        least two are given), so the result does not depend on the input values.
+
         Parameters:
-        - input_patterns: List of input patterns
+        - input_patterns: List of input patterns (at least two; values unused)
         - operation: Logic operation ('and', 'or', 'xor')
         - simulation_steps: Number of simulation steps
 
@@ -208,7 +212,12 @@ class WaveComputing:
         }
 
     def wave_memory(self, input_data, storage_time=50, retrieval_time=20):
-        """Store and retrieve information using wave dynamics."""
+        """Store and retrieve information using wave dynamics.
+
+        Each retrieved value is 0.7 * the (slowly decaying) value held in the
+        memory element at that position plus 0.3 * twice the mean wave activity
+        around it, so most of the readout comes from the stored number itself.
+        """
         medium = WaveComputingMedium(
             size=(self.medium.width, self.medium.height),
             boundary='absorbing',

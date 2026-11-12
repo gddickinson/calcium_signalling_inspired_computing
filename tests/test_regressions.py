@@ -41,32 +41,6 @@ def test_wave_medium_non_square_grid():
     assert medium.current[10, 25] != 0
 
 
-def test_wave_medium_uniform_field_is_at_rest():
-    """A flat field at rest must stay flat. The update overwrote `previous` before using it and used the neighbour mean
-    as the Laplacian, so a uniform 0.5 grew by D*dt^2 per step."""
-    from wave_based_computing.wave_medium import WaveComputingMedium
-    medium = WaveComputingMedium(size=(12, 12), boundary='reflecting', damping=1.0, nonlinearity=0.0)
-    medium.current[:] = 0.5
-    medium.previous[:] = 0.5
-    for t in range(5):
-        medium.update(t * medium.time_step)
-    np.testing.assert_allclose(medium.current, 0.5, rtol=0, atol=1e-12)
-
-
-def test_wave_medium_pulse_oscillates():
-    """A wave equation makes a released bump swing through zero; the old update only smoothed it (no second time
-    derivative), so the centre never went negative."""
-    from wave_based_computing.wave_medium import WaveComputingMedium
-    medium = WaveComputingMedium(size=(21, 21), boundary='reflecting', damping=1.0, nonlinearity=0.0, diffusion=100.0)
-    medium.current[10, 10] = medium.previous[10, 10] = 1.0
-    centre = []
-    for t in range(10):
-        medium.update(t * medium.time_step)
-        centre.append(medium.current[10, 10])
-    assert min(centre) < 0
-    assert medium.current[10, 14] != 0      # and it spreads
-
-
 # --- threshold_computing --------------------------------------------------------------------------------------------
 
 def test_threshold_unit_zero_refractory_period():

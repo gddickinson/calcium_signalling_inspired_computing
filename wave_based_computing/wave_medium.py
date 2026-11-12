@@ -1,8 +1,18 @@
 """
 Wave Computing Medium -- core simulation engine.
 
-Implements a 2D wave equation solver with sources, obstacles,
-resonant regions, and memory elements. Information is encoded in
+Implements a 2D wave-like medium with sources, obstacles,
+resonant regions, and memory elements.
+
+Note on the update rule: it is written in the form of a leapfrog wave-equation
+step (2*u - u_prev + D*dt^2*L), but `previous` is set to `current` before it is
+used and L is the neighbour mean (not mean minus centre), so each step is in
+effect u_next = damping * (u + D*dt^2 * neighbour_mean(u)) - nonlinearity*u^3,
+plus sources and memory elements: a first-order, damped, slowly spreading driven
+field rather than a second-order wave equation. With the defaults
+(D*dt^2 = 0.002) activity stays close to the sources. Making it a true wave
+equation also needs the source and nonlinear terms rescaled (left as an open
+decision; see SESSION_LOG.md). Information is encoded in
 wave properties (amplitude, frequency, phase) and computation
 emerges from wave interactions.
 """
@@ -105,7 +115,7 @@ class WaveComputingMedium:
         return 0.0
 
     def update(self, t):
-        """Update the wave medium for one time step."""
+        """Update the wave medium for one time step (see the module note on the update rule)."""
         self.previous = self.current.copy()
 
         laplacian = convolve2d(self.current, self.kernel, mode='same', boundary='symm')
