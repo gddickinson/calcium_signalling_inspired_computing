@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calcium-Inspired Computing</title>
+<meta name="description" content="Six computational models inspired by calcium signalling dynamics (puffs, waves, thresholds, coordinated channel recruitment, multiple stores), running live in the browser as ports of the Python code.">
+<link rel="icon" href="static/icon.svg">
+<link rel="stylesheet" href="static/style.css">
+<link rel="stylesheet" href="static/style_app.css">
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<header class="top">
+  <a class="brand" href="#/"><span class="mark"></span>Ca²⁺ Computing</a>
+  <nav class="groups">
+    <a href="#/" data-nav="home">Overview</a>
+    <details><summary>Models</summary><div class="menu">
+      <a href="#/puffs" data-nav="puffs">1 · Probabilistic (puffs)</a>
+      <a href="#/patterns" data-nav="patterns">2 · Spatiotemporal patterns</a>
+      <a href="#/threshold" data-nav="threshold">3 · Threshold units</a>
+      <a href="#/recruitment" data-nav="recruitment">4 · Coordinated recruitment</a>
+      <a href="#/stores" data-nav="stores">5 · Multi-store memory</a>
+      <a href="#/waves" data-nav="waves">6 · Wave-based processing</a>
+    </div></details>
+    <a href="#/about" data-nav="about">About</a>
+  </nav>
+  <div class="right"><a class="small mute" href="https://github.com/gddickinson/calcium_signalling_inspired_computing" target="_blank" rel="noopener">GitHub</a></div>
+</header>
+<main id="app" tabindex="-1"></main>
+<footer class="foot">Calcium-Inspired Computing · <a href="https://github.com/gddickinson/calcium_signalling_inspired_computing">source on GitHub</a> · <span id="mode"></span></footer>
+<script type="module" src="static/main.js"></script>
+</body>
+</html>

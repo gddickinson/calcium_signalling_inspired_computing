@@ -1,0 +1,27 @@
+/* Calcium-Inspired Computing: cyan-mint accent with amber and periwinkle on the shared neon theme, plus page styles. */
+:root { --accent:#3dffd8; --accent2:#ffb03d; --accent3:#7b8cff; --glow:rgba(61,255,216,.12); }
+button, .btn, .seg button.on { color:#021412; }
+.mark { box-shadow:0 0 12px var(--accent), inset 0 0 0 4px var(--bg), inset 0 0 0 9px var(--accent2); }
+.fig { margin:0 0 12px; min-width:0; } .fig canvas { width:100%; height:auto; display:block; background:#060814; border:1px solid var(--line); border-radius:6px; image-rendering:pixelated; }
+.fig figcaption { margin-top:4px; }
+.lab { display:grid; grid-template-columns:290px 1fr; gap:20px; align-items:start; margin-top:10px; }
+.lab .controls { position:sticky; top:84px; padding:8px 16px 14px; margin:0; max-height:calc(100vh - 100px); overflow-y:auto; }
+.lab .controls .btns button { margin:10px 6px 0 0; }
+.lab .view { min-width:0; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; } .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.readout { font:13px var(--mono); background:rgba(3,5,10,.9); border:1px solid var(--line); border-radius:4px; padding:10px 12px; }
+.readout div { display:flex; justify-content:space-between; gap:10px; } .readout b { color:var(--accent); text-align:right; }
+.notes { margin-top:20px; }
+.door b { color:var(--accent); } .door .tag { margin-top:8px; } .door .num { font:600 12px var(--mono); color:var(--accent2); }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; font:12px var(--mono); color:var(--mute); margin:4px 0 8px; }
+.legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+.cbar { height:8px; border-radius:3px; margin:2px 0 0; } .cbar-l { display:flex; justify-content:space-between; font:11px var(--mono); color:var(--mute); }
+.feat { margin:6px 0 0; padding-left:18px; } .feat li { margin:2px 0; }
+.defaults { font:12px var(--mono); color:var(--mute); }
+.bits { font:11px/1.25 var(--mono); letter-spacing:.5px; word-break:break-all; white-space:normal; margin:4px 0; }
+.bits .one { color:var(--accent); } .bits .zero { color:#2b3558; }
+.op { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; font:13px var(--mono); }
+details.src summary { cursor:pointer; color:var(--accent3); font:13px var(--mono); }
+@media (max-width:860px) {
+  .lab { grid-template-columns:1fr; } .lab .controls { position:static; max-height:none; } .grid2, .grid3 { grid-template-columns:1fr; }
+}

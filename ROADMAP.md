@@ -24,7 +24,7 @@ A collection of six independent computational models inspired by calcium signali
 ## Long-term Vision
 - [ ] Publish as a pip-installable package (`calcium-computing`) with proper API
 - [ ] Write companion academic paper describing the computational frameworks
-- [ ] Create a web-based demo (Streamlit/Gradio) for interactive exploration
+- [x] Create a web-based demo for interactive exploration (FastAPI + static GitHub Pages site, see README "Web interface")
 - [ ] Implement real-time FPGA synthesis targets for the threshold and wave computing models
 - [ ] Add integration with Brian2 or NEST for neuroscience simulation frameworks
 - [ ] Develop a unified "calcium computing VM" that composes all six paradigms
@@ -34,5 +34,5 @@ A collection of six independent computational models inspired by calcium signali
 - [ ] No top-level entry point or CLI interface
 - [x] Each script likely runs its full demo on import -- separate demo code from library code using `if __name__ == "__main__"` (already present in all scripts)
 - [x] No `.gitignore` for generated plots and `__pycache__/`
-- [ ] Missing `LICENSE` file referenced in README
-- [ ] The README references import paths like `calcium_computing.probabilistic` that do not exist in the actual file structure
+- [x] Missing `LICENSE` file referenced in README (MIT licence added)
+- [x] The README references import paths like `calcium_computing.probabilistic` that do not exist in the actual file structure (corrected)

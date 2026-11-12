@@ -89,6 +89,33 @@ This model demonstrates how information can be encoded in wave properties (ampli
 python wave_based_computing/wave_based_computing.py
 ```
 
+## Web interface
+
+All six models also run in the browser: https://gddickinson.github.io/calcium_signalling_inspired_computing/
+(published by `.github/workflows/pages.yml` from `main` once GitHub Pages is set to "GitHub Actions").
+Each model page runs a JavaScript port of the Python classes (`web/static/*_engine.js`) with live
+visualisations and parameter controls; a seed replays the seeded Python run number for number, because the ports
+use a JavaScript copy of numpy's legacy random generator. An overview page explains the idea in this README's words.
+
+![Overview](docs/img/home.png)
+![Model 1: probabilistic puffs](docs/img/puffs.png)
+![Model 3: threshold detection](docs/img/threshold_detection.png)
+![Model 6: wave medium](docs/img/waves.png)
+
+### Run the web app
+
+```bash
+pip install -r requirements-web.txt
+python run_web.py                  # http://127.0.0.1:8144 (local only)
+python scripts/build_static.py     # static GitHub Pages site in site/
+python -m pytest -q tests          # model tests, regression tests, web tests (needs node for the JS checks)
+```
+
+The JS engines are checked against the Python by `node web/static/<engine>.test.mjs`, using reference runs in
+`tests/fixtures/` written by `python scripts/make_<name>_fixture.py --write`; `tests/test_web.py` checks the
+fixtures still match the current Python. The spatiotemporal pattern recognition (scikit-learn) is shown from a
+Python run made when the site is built.
+
 ## Installation
 
 ```bash

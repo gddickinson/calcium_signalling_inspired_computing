@@ -5,3 +5,5 @@
 /tests/__pycache__
 /threshold_computing/__pycache__
 /wave_based_computing/__pycache__
+__pycache__/
+/site/
