@@ -2,28 +2,48 @@
 // WaveComputing's logic-gate, memory and filter set-ups (wave_computing.py). Deterministic (no random numbers);
 // wave_engine.test.mjs checks it against tests/fixtures/wave.json.
 //
-// As in the Python (see the module note there), the update writes `previous = current` before using it and uses the
-// neighbour mean as "laplacian", so each step is  u <- damping * (u + D*dt^2 * mean8(u)) [edge taper]
-// - nonlinearity * u^3, then resonance gain, sources and memory elements.
+// Damped wave equation u_tt = c^2 lap(u) - gamma u_t - nonlinearity u^3, leapfrog with a 9-point Laplacian; each
+// output step is split into substeps chosen from the CFL condition, so every wave speed is stable.
 import { convolve, normalise } from './grid.js';
 
 const KERNEL = normalise(Float64Array.from([0.05, 0.2, 0.05, 0.2, 0.0, 0.2, 0.05, 0.2, 0.05]));
+export const LAPLACIAN_SCALE = 0.3, LAMBDA_MAX = 1.6 / 0.3, CFL_SAFETY = 0.9, SPONGE_WIDTH = 5;
 // numpy slice bounds: negative start/stop count from the end, then clamp to [0, n]
 const sl = (v, n) => Math.min(n, Math.max(0, v < 0 ? v + n : v));
 
-export const WAVE_DEFAULTS = { width: 100, height: 100, boundary: 'absorbing', damping: 0.99, diffusion: 0.2, nonlinearity: 0.1, timeStep: 0.1 };
+export const WAVE_DEFAULTS = { width: 100, height: 100, boundary: 'absorbing', damping: 0.99, waveSpeed: 10.0, nonlinearity: 0.1, timeStep: 0.1, dx: 1.0 };
 
 export class WaveMedium {
   constructor(opts = {}) {
     const o = { ...WAVE_DEFAULTS, ...opts };
     Object.assign(this, o);
+    this.diffusion = this.waveSpeed ** 2;
     const N = o.width * o.height;
     this.current = new Float64Array(N); this.previous = new Float64Array(N);
     this.frequency = new Float64Array(N); this.phase = new Float64Array(N);
     this.obstacles = new Uint8Array(N);
     this.sources = []; this.resonant = []; this.memory = new Map();
     this.history = []; this.energy = []; this.steps = 0;
-    this._mask = this._boundaryMask();
+    this.setTiming();
+    this.sponge = this._sponge();
+  }
+
+  // Substeps per output step from the CFL condition c * dt * sqrt(LAMBDA_MAX) / dx <= 2 (times CFL_SAFETY)
+  setTiming() {
+    if (this.waveSpeed <= 0) { this.substeps = 1; this.dtSub = this.timeStep; return; }
+    const dtMax = CFL_SAFETY * 2.0 * this.dx / (this.waveSpeed * Math.sqrt(LAMBDA_MAX));
+    this.substeps = Math.max(1, Math.ceil(this.timeStep / dtMax - 1e-12));
+    this.dtSub = this.timeStep / this.substeps;
+  }
+
+  _sponge() {
+    const { width: W, height: H } = this, m = new Float64Array(W * H).fill(1), bw = SPONGE_WIDTH;
+    for (let i = 0; i < bw; i++) {
+      const f = Math.exp(-((0.2 * (bw - i)) ** 2));
+      for (const r of [i, H - 1 - i]) if (r >= 0 && r < H) for (let x = 0; x < W; x++) m[r * W + x] = Math.min(m[r * W + x], f);
+      for (const c of [i, W - 1 - i]) if (c >= 0 && c < W) for (let y = 0; y < H; y++) m[y * W + c] = Math.min(m[y * W + c], f);
+    }
+    return m;
   }
 
   addSource([x, y], amplitude, frequency, phase = 0, duration = null) {
@@ -41,52 +61,73 @@ export class WaveMedium {
   setMemory([x, y], value) { if (x >= 0 && x < this.width && y >= 0 && y < this.height) this.memory.set(`${x},${y}`, [x, y, value, 0.999]); }
   readMemory([x, y]) { const m = this.memory.get(`${x},${y}`); return m ? m[2] : 0.0; }
 
-  _boundaryMask() {
-    const { width: W, height: H } = this, m = new Float64Array(W * H).fill(1), bw = 5;
-    for (let i = 0; i < bw; i++) {
-      const f = 1.0 - (i / bw) ** 2;
-      for (const r of [i, H - i - 1]) if (r >= 0 && r < H) for (let x = 0; x < W; x++) m[r * W + x] *= f;
-      for (const c of [i, W - i - 1]) if (c >= 0 && c < W) for (let y = 0; y < H; y++) m[y * W + c] *= f;
-    }
-    return m;
+  laplacian(u) {
+    const mean = convolve(u, this.height, this.width, KERNEL, 3, this.boundary === 'periodic' ? 'wrap' : 'symm');
+    const s = LAPLACIAN_SCALE * this.dx ** 2, out = new Float64Array(u.length);
+    for (let i = 0; i < u.length; i++) out[i] = (mean[i] - u[i]) / s;
+    return out;
   }
 
-  update(t) {
-    const { width: W, height: H } = this, N = W * H, cur = this.current;
-    this.previous = cur.slice();
-    const lap = convolve(cur, H, W, KERNEL, 3, 'symm'), c = this.diffusion * this.timeStep ** 2;
-    const next = new Float64Array(N);
-    for (let i = 0; i < N; i++) next[i] = (2 * cur[i] - this.previous[i] + c * lap[i]) * this.damping;
-    if (this.boundary === 'absorbing') for (let i = 0; i < N; i++) next[i] *= this._mask[i];
-    else if (this.boundary === 'periodic') {     // as coded: adds half of the opposite edge, row/column in sequence
-      for (let x = 0; x < W; x++) next[x] += 0.5 * next[(H - 1) * W + x];
-      for (let x = 0; x < W; x++) next[(H - 1) * W + x] += 0.5 * next[x];
-      for (let y = 0; y < H; y++) next[y * W] += 0.5 * next[y * W + W - 1];
-      for (let y = 0; y < H; y++) next[y * W + W - 1] += 0.5 * next[y * W];
-    }
-    if (this.nonlinearity > 0) for (let i = 0; i < N; i++) next[i] -= this.nonlinearity * cur[i] ** 3;
-    for (let i = 0; i < N; i++) if (this.obstacles[i]) next[i] = 0;
-    for (const r of this.resonant) {
-      if (this.history.length > 10) {
-        const lf = this.localFrequency(r), g = 1.0 + 0.1 * Math.exp(-(((lf - r.frequency) / 0.1) ** 2));
-        for (let y = sl(r.y0, H); y < sl(r.y1, H); y++) for (let x = sl(r.x0, W); x < sl(r.x1, W); x++) next[y * W + x] *= g;
-      }
-    }
-    for (const s of this.sources) {
-      if (s.duration === null || t < s.start + s.duration) {
-        const v = s.amplitude * Math.sin(2 * Math.PI * s.frequency * t + s.phase);
-        for (let dx = -1; dx < 2; dx++) for (let dy = -1; dy < 2; dy++) {
-          const nx = s.x + dx, ny = s.y + dy;
-          if (nx >= 0 && nx < W && ny >= 0 && ny < H) next[ny * W + nx] += v * Math.exp(-(dx ** 2 + dy ** 2) / 2);
+  // Conserved discrete energy (no damping, sources, nonlinearity or sponge, periodic grid)
+  waveEnergy() {
+    const lp = this.laplacian(this.previous);
+    let kin = 0, pot = 0;
+    for (let i = 0; i < lp.length; i++) { const v = (this.current[i] - this.previous[i]) / this.dtSub; kin += v * v; pot += this.current[i] * lp[i]; }
+    return 0.5 * kin - 0.5 * this.diffusion * pot;
+  }
+
+  // Fraction of velocity kept per substep; no loss in a resonant region whose dominant frequency matches its tuning
+  _velocityFactor() {
+    const { width: W, height: H } = this, keep = new Float64Array(W * H).fill(this.damping ** (1.0 / this.substeps));
+    if (this.history.length > 10) {
+      for (const r of this.resonant) {
+        const lf = this.localFrequency(r), match = Math.exp(-(((lf - r.frequency) / 0.1) ** 2));
+        for (let y = sl(r.y0, H); y < sl(r.y1, H); y++) for (let x = sl(r.x0, W); x < sl(r.x1, W); x++) {
+          const k = y * W + x; keep[k] = Math.max(keep[k], keep[k] ** (1.0 - match));
         }
       }
     }
-    for (const m of this.memory.values()) { const v = m[2]; m[2] = v * m[3]; next[m[1] * W + m[0]] += 0.1 * v; }
-    this.current = next;
+    return keep;
+  }
+
+  _sourceField(t) {
+    const { width: W, height: H } = this, field = new Float64Array(W * H), covered = new Uint8Array(W * H);
+    for (const s of this.sources) {
+      if (s.duration !== null && t >= s.start + s.duration) continue;
+      const v = s.amplitude * Math.sin(2 * Math.PI * s.frequency * t + s.phase);
+      for (let dx = -1; dx < 2; dx++) for (let dy = -1; dy < 2; dy++) {
+        const nx = s.x + dx, ny = s.y + dy;
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H) { field[ny * W + nx] += v * Math.exp(-(dx ** 2 + dy ** 2) / 2); covered[ny * W + nx] = 1; }
+      }
+    }
+    return [field, covered];
+  }
+
+  update(t) {
+    const { width: W } = this, N = this.width * this.height, dt = this.dtSub, keep = this._velocityFactor();
+    for (let k = 0; k < this.substeps; k++) {
+      let u = this.current; const up = this.previous, lap = this.laplacian(u), next = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        let acc = this.diffusion * lap[i];
+        if (this.nonlinearity > 0) acc = acc - this.nonlinearity * u[i] ** 3;
+        next[i] = u[i] + keep[i] * (u[i] - up[i]) + dt ** 2 * acc;
+        if (this.obstacles[i]) next[i] = 0;
+      }
+      if (this.boundary === 'absorbing') {
+        const sp = this.sponge, us = new Float64Array(N);
+        for (let i = 0; i < N; i++) { next[i] *= sp[i]; us[i] = u[i] * sp[i]; }
+        u = us;
+      }
+      const [field, covered] = this._sourceField(t + (k + 1) * dt);
+      for (let i = 0; i < N; i++) if (covered[i]) next[i] = field[i];
+      for (const m of this.memory.values()) next[m[1] * W + m[0]] = m[2];
+      this.previous = u; this.current = next;
+    }
+    for (const m of this.memory.values()) m[2] = m[2] * m[3];
     if (this.history.length > 5) this._frequencyPhase();
-    this.history.push(next.slice());
+    this.history.push(this.current.slice());
     if (this.history.length > 100) this.history.shift();
-    let e = 0; for (const v of next) e += v * v;
+    let e = 0; for (const v of this.current) e += v * v;
     this.energy.push(e); if (this.energy.length > 100) this.energy.shift();
     this.steps++;
   }
@@ -129,32 +170,42 @@ export class WaveMedium {
   run(steps) { for (let s = 0; s < steps; s++) this.update(s * this.timeStep); }
 }
 
-const fromMedium = (m, extra = {}) => new WaveMedium({ width: m.width, height: m.height, boundary: m.boundary, damping: m.damping, diffusion: m.diffusion, nonlinearity: m.nonlinearity, ...extra });
+const fromMedium = (m, extra = {}) => new WaveMedium({ width: m.width, height: m.height, boundary: m.boundary, damping: m.damping, waveSpeed: m.waveSpeed, nonlinearity: m.nonlinearity, timeStep: m.timeStep, ...extra });
 
-// WaveComputing.wave_logic_gates set-up: two lines of sources (left edge, top edge), a resonant centre box.
-// The input patterns are not used by the Python; the set-up depends only on the operation.
-export function logicGateMedium(base, op) {
-  const m = fromMedium(base), { width: W, height: H } = m, cx = Math.floor(W / 2), cy = Math.floor(H / 2);
-  const [amp, f, ph2, half] = { and: [0.3, 0.5, 0, 10], or: [0.2, 0.7, 0, 15], xor: [0.3, 0.6, Math.PI, 0] }[op];
-  for (let y = Math.floor(H / 4); y < Math.floor(3 * H / 4); y++) m.addSource([5, y], amp, f, 0);
-  for (let x = Math.floor(W / 4); x < Math.floor(3 * W / 4); x++) m.addSource([x, 5], amp, f, ph2);
-  if (half) m.addResonantRegion(cx - half, cx + half, cy - half, cy + half, f);
-  else m.nonlinearity = 0.2;
+// WaveComputing gates: input A = line of sources at x = 5 (rows H/4..3H/4), input B = line at y = 5 (columns
+// W/4..3W/4), each on when its bit is 1; B in antiphase for XOR. Output: centre amplitude vs one input alone.
+export const GATE = { amplitude: 0.3, frequency: 0.5, thresholds: { and: 1.5, or: 0.5, xor: 0.5 } };
+
+export function gateMedium(base, [a, b], op) {
+  const m = fromMedium(base, { boundary: 'absorbing' }), { width: W, height: H } = m;
+  if (a) for (let y = Math.floor(H / 4); y < Math.floor(3 * H / 4); y++) m.addSource([5, y], GATE.amplitude, GATE.frequency, 0);
+  if (b) for (let x = Math.floor(W / 4); x < Math.floor(3 * W / 4); x++) m.addSource([x, 5], GATE.amplitude, GATE.frequency, op === 'xor' ? Math.PI : 0);
   return m;
 }
 
-// Gate readout: the largest |amplitude| in the central 20 x 20 box over the last 10 frames
-export function gateReadout(m) {
-  const { width: W, height: H } = m, cx = Math.floor(W / 2), cy = Math.floor(H / 2);
-  const x0 = Math.max(0, cx - 10), x1 = Math.min(W, cx + 10), y0 = Math.max(0, cy - 10), y1 = Math.min(H, cy + 10);
+// Largest |mean of the 3 x 3 centre cells| over the last `window` frames
+export function gateReadout(m, window = 20) {
+  const W = m.width, cx = Math.floor(m.width / 2), cy = Math.floor(m.height / 2), frames = m.history.slice(-window);
   let best = 0;
-  for (const f of m.history.slice(-10)) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) best = Math.max(best, Math.abs(f[y * W + x]));
+  for (const f of frames) {
+    let s = 0;
+    for (let y = cy - 1; y < cy + 2; y++) for (let x = cx - 1; x < cx + 2; x++) s += f[y * W + x];
+    best = Math.max(best, Math.abs(s / 9));
+  }
   return best;
+}
+
+// Full gate evaluation as wave_logic_gates: returns { inputs, output, value, reference, threshold }
+export function logicGate(base, bits, op, steps = 100) {
+  const m = gateMedium(base, bits, op); m.run(steps);
+  const ref = gateMedium(base, [true, false], 'or'); ref.run(steps);
+  const value = gateReadout(m), reference = gateReadout(ref), threshold = GATE.thresholds[op] * reference;
+  return { inputs: bits, output: value > threshold, value, reference, threshold, medium: m };
 }
 
 // WaveComputing.wave_memory set-up; storage then retrieval (retrieval adds pulse sources along the bottom).
 export function memoryMedium(base, data) {
-  const m = fromMedium(base, { boundary: 'absorbing', damping: 0.995, diffusion: 0.1, nonlinearity: 0.05 });
+  const m = fromMedium(base, { boundary: 'absorbing', damping: 0.995, nonlinearity: 0.05 });
   const spacing = Math.floor(m.width / (data.length + 1)), my = Math.floor(m.height / 2);
   data.forEach((v, i) => {
     const x = (i + 1) * spacing, f = 0.5 + 0.3 * (v + 1) / 2;
@@ -184,7 +235,7 @@ export function memoryReadout(m, n) {
 // WaveComputing.wave_filter set-up: one source per sample down the left edge, a resonant band per row in the middle
 // third tuned to cutoff/2 (lowpass), 1.5 x cutoff (highpass) or cutoff (bandpass).
 export function filterMedium(base, signal, type = 'lowpass', cutoff = 0.5) {
-  const m = fromMedium(base, { boundary: 'absorbing', damping: 0.99, diffusion: 0.1, nonlinearity: 0.1 });
+  const m = fromMedium(base, { boundary: 'absorbing', damping: 0.99, nonlinearity: 0.1 });
   const { width: W, height: H } = m, scale = Math.min(1.0, H / signal.length);
   for (let i = 0; i < signal.length; i++) {
     const y = Math.trunc(i * scale); if (y >= H) break;

@@ -14,7 +14,7 @@ MODELS = {
                "probabilistic_computing.probabilistic_computing:StochasticComputing"]),
     "patterns": (2, "spatiotemporal_computing", "spatiotemporal_computing/spatiotemporal_computing.py",
                  ["spatiotemporal_computing.spatiotemporal_computing:SpatiotemporalComputing",
-                  "spatiotemporal_computing.spatiotemporal_computing:PatternRecognitionComputer"]),
+                  "spatiotemporal_computing.pattern_recognition:PatternRecognitionComputer"]),
     "threshold": (3, "threshold_computing", "threshold_computing/threshold_computing.py",
                   ["threshold_computing.threshold_computing:ThresholdComputingUnit",
                    "threshold_computing.threshold_computing:ThresholdComputingNetwork",

@@ -1,10 +1,11 @@
-"""Spatiotemporal pattern recognition (PatternRecognitionComputer, scikit-learn PCA + KMeans) run with the demo's
-patterns from spatiotemporal_computing.py's __main__, seeded, for the web page. Python only: precomputed at build time."""
+"""Spatiotemporal pattern recognition (PatternRecognitionComputer) run with the demo's patterns from
+spatiotemporal_computing.py's __main__, seeded, for the web page: noisy copies of the three stored patterns and of a
+pattern that was never stored. Precomputed at build time (it is cheap, but keeps the page independent of Python)."""
 from functools import lru_cache
 
 import numpy as np
 
-from spatiotemporal_computing.spatiotemporal_computing import PatternRecognitionComputer, SpatiotemporalComputing
+from spatiotemporal_computing import PatternRecognitionComputer, SpatiotemporalComputing
 
 SEED, GRID, NOISE = 42, 50, 0.2
 
@@ -17,20 +18,28 @@ def demo_patterns(n=GRID):
     return {"central_pulse": p1, "horizontal_stripe": p2, "vertical_stripe": p3}
 
 
+def unstored_patterns(n=GRID):
+    corner = np.zeros((3, n, n)); corner[0, 5:15, 35:45] = 1.0
+    diagonal = np.zeros((3, n, n))
+    for i in range(n):
+        diagonal[1, i, max(0, i - 3):i + 3] = 0.8
+    return {"corner_pulse": corner, "diagonal_stripe": diagonal}
+
+
 @lru_cache(maxsize=1)
 def recognition():
     np.random.seed(SEED)
-    model = SpatiotemporalComputing(grid_size=GRID, n_channels=3)
-    rec = PatternRecognitionComputer(model)
-    patterns = demo_patterns()
-    rec.train(patterns)
-    graphs = {k: sorted([int(a), int(b)] for a, b in g.edges()) for k, g in rec.pattern_graphs.items()}
+    rec = PatternRecognitionComputer(SpatiotemporalComputing(grid_size=GRID, n_channels=3))
+    stored = demo_patterns()
+    rec.train(stored)
     tests = []
-    for name, p in patterns.items():
-        noisy = p + np.random.normal(0, NOISE, p.shape)
-        match, score = rec.recognize(noisy)
-        test_graph = rec._compute_pattern_graph(model.history)
-        scores = {ref: float(rec._graph_similarity(test_graph, g)) for ref, g in rec.pattern_graphs.items()}
-        tests.append({"input": name, "match": match, "score": float(score), "scores": scores})
-    return {"seed": SEED, "grid": GRID, "noise_sd": NOISE, "steps": 20, "graphs": graphs, "tests": tests,
-            "correct": sum(t["input"] == t["match"] for t in tests)}
+    for kind, pats in (("stored", stored), ("not stored", unstored_patterns())):
+        for name, p in pats.items():
+            match, score = rec.recognize(p + np.random.normal(0, NOISE, p.shape))
+            expected = name if kind == "stored" else None
+            tests.append({"input": name, "kind": kind, "match": match, "score": score, "correct": match == expected,
+                          "distances": {k: float(v) for k, v in rec.last_distances.items()}})
+    return {"seed": SEED, "grid": GRID, "noise_sd": NOISE, "block": rec.block, "frames": rec.signature_frames,
+            "n_noisy": rec.n_noisy, "radius_factor": rec.radius_factor,
+            "radii": {k: float(v) for k, v in rec.radii.items()}, "tests": tests,
+            "correct": sum(t["correct"] for t in tests)}

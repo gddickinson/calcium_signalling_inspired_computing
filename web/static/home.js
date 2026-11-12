@@ -10,7 +10,7 @@ const BLURB = {
   threshold: 'Leaky sigmoid units with a refractory period integrate weak inputs until they cross threshold.',
   recruitment: 'Elements fire only when direct input plus neighbour activity passes their threshold, forming clusters.',
   stores: 'Three memory stores with different size, reliability and persistence pass strong activity between them.',
-  waves: 'Oscillating sources drive a damped 2-D medium with obstacles, resonant regions and memory elements.',
+  waves: 'Sources drive a damped 2-D wave equation; AND, OR and XOR gates come from waves adding or cancelling.',
 };
 
 route('home', async () => {

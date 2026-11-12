@@ -102,7 +102,7 @@ use a JavaScript copy of numpy's legacy random generator. An overview page expla
 ![Overview](docs/img/home.png)
 ![Model 1: probabilistic puffs](docs/img/puffs.png)
 ![Model 3: threshold detection](docs/img/threshold_detection.png)
-![Model 6: wave medium](docs/img/waves.png)
+![Model 6: XOR gate, the two input waves cancel at the centre](docs/img/waves.png)
 
 ### Run the web app
 

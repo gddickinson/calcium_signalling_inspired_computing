@@ -89,13 +89,13 @@ def test_models_come_from_readme_and_code():
         assert r["title"] and r["intro"] and r["features"], r["route"]
         assert (ROOT / r["script"]).exists()
     waves = next(r for r in rows if r["route"] == "waves")
-    assert waves["classes"][0]["defaults"]["diffusion"] == 0.2
+    assert waves["classes"][0]["defaults"]["wave_speed"] == 10.0
 
 
 def test_recognition_is_reported_honestly():
     r = client.get("/api/recognition").json()
-    assert len(r["tests"]) == 3
-    assert r["correct"] == sum(t["input"] == t["match"] for t in r["tests"])
+    assert len(r["tests"]) == 5 and r["correct"] == 5
+    assert [t["match"] for t in r["tests"] if t["kind"] == "not stored"] == [None, None]
 
 
 def test_pages_registered():

@@ -21,6 +21,9 @@ calcium_signalling_inspired_computing/
     test_threshold.py              # Tests for threshold_computing
     test_spatiotemporal.py         # Tests for spatiotemporal_computing
     test_regressions.py            # One regression test per fixed bug (see SESSION_LOG.md)
+    test_wave_physics.py           # Wave equation: CFL substeps, energy conservation/decay, speed, stability
+    test_wave_gates.py             # AND/OR/XOR truth tables of the wave gates
+    test_pattern_recognition.py    # Stored patterns recognised, unstored ones rejected (3 seeds)
     test_web.py                    # Web API, static build, JS engine node tests, fixtures still current
     fixtures/*.json                # Seeded Python reference runs for the JS engines
   probabilistic_computing/
@@ -28,7 +31,8 @@ calcium_signalling_inspired_computing/
     probabilistic_computing.py     # Grid-based probabilistic computing + stochastic arithmetic
   spatiotemporal_computing/
     __init__.py                    # Exports SpatiotemporalComputing, PatternRecognitionComputer
-    spatiotemporal_computing.py    # Reaction-diffusion computing + pattern recognition
+    spatiotemporal_computing.py    # SpatiotemporalComputing (reaction-diffusion-style model) + demo
+    pattern_recognition.py         # PatternRecognitionComputer (early-dynamics signatures, accept radius)
   threshold_computing/
     __init__.py                    # Exports ThresholdComputingUnit, ThresholdComputingNetwork, ThresholdLogicComputer
     threshold_computing.py         # ThresholdComputingUnit, ThresholdComputingNetwork (+ reset), demo
@@ -47,8 +51,8 @@ calcium_signalling_inspired_computing/
     multistore_computing.py        # Demo script; re-exports the classes from the modules above
   wave_based_computing/
     __init__.py                    # Exports WaveComputingMedium, WaveComputing
-    wave_medium.py                 # WaveComputingMedium (driven damped 2D field; see its module note)
-    wave_computing.py              # WaveComputing (pattern recognition, logic gates, memory, filtering)
+    wave_medium.py                 # WaveComputingMedium (damped wave equation, CFL substeps, sources, sponge)
+    wave_computing.py              # WaveComputing (logic gates from inputs, memory, filtering, PCA pattern matching)
     wave_based_computing.py        # Demo script; re-exports the classes from the modules above
 ```
 
@@ -59,7 +63,7 @@ calcium_signalling_inspired_computing/
 | CalciumPuffComputing | probabilistic_computing | Grid-based probabilistic computing model |
 | StochasticComputing | probabilistic_computing | Stochastic multiply/add/subtract/divide |
 | SpatiotemporalComputing | spatiotemporal_computing | Multi-channel reaction-diffusion system |
-| PatternRecognitionComputer | spatiotemporal_computing | Graph-based pattern recognition |
+| PatternRecognitionComputer | spatiotemporal_computing.pattern_recognition | Recognise/reject patterns by their early dynamics |
 | ThresholdComputingUnit | threshold_computing | Single sigmoid threshold unit |
 | ThresholdComputingNetwork | threshold_computing | 2D network of threshold units |
 | ThresholdLogicComputer | threshold_computing.threshold_logic | Temporal integration, detection, analog memory |
@@ -69,8 +73,8 @@ calcium_signalling_inspired_computing/
 | CalciumStore | multistore_computing.store | Read/write memory compartment |
 | MultiStoreComputer | multistore_computing.computer | Multi-store orchestration + visualization |
 | HybridComputing | multistore_computing.hybrid | Hierarchical memory, cross-store processing |
-| WaveComputingMedium | wave_based_computing.wave_medium | Driven damped 2D field with sources, obstacles, resonance |
-| WaveComputing | wave_based_computing.wave_computing | Pattern recognition, logic gates, memory, filtering |
+| WaveComputingMedium | wave_based_computing.wave_medium | Damped 2D wave equation with sources, obstacles, resonance |
+| WaveComputing | wave_based_computing.wave_computing | Logic gates (AND/OR/XOR), memory, filtering, pattern matching |
 
 ## Module Dependencies
 

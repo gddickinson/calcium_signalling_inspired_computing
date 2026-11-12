@@ -61,16 +61,18 @@ route('patterns', () => {
 async function recognition() {
   const r = await api('/recognition'), host = document.getElementById('recog');
   if (!host) return;
+  const names = Object.keys(r.radii);
   host.innerHTML = `<h2>Pattern recognition (Python run)</h2>
-  <p><code>PatternRecognitionComputer</code> trains on three patterns (a 10 x 10 pulse in channel 0, a horizontal stripe in
-  channel 1, a vertical stripe in channel 2) on a ${r.grid} x ${r.grid} grid: it runs each for ${r.steps} steps, reduces the
-  frames with PCA, clusters them into 5 states with k-means, and keeps the graph of transitions between cluster labels.
-  A noisy copy of each pattern (Gaussian noise, sd ${r.noise_sd}) is then matched by the overlap of transition edges
-  (Jaccard similarity). It uses scikit-learn, so this is the real Python result, computed when the site was built
-  (seed ${r.seed}).</p>
-  <div class="scroll"><table><tr><th>Input (noisy)</th><th>Best match</th>${list(Object.keys(r.graphs), g => `<th>vs ${esc(g)}</th>`)}</tr>
-  ${list(r.tests, t => `<tr><td>${esc(t.input)}</td><td class="${t.input === t.match ? 'ok' : 'err'}">${esc(t.match)}</td>${list(Object.keys(r.graphs), g => `<td>${fmt(t.scores[g])}</td>`)}</tr>`)}</table></div>
-  <p class="callout">${r.correct} of ${r.tests.length} inputs matched their own pattern in this run. The k-means cluster
-  numbers are assigned independently in every run, so the same label in two graphs need not mean the same state; that
-  limits what the edge overlap can show (noted for the author in the repository's SESSION_LOG.md).</p>`;
+  <p><code>PatternRecognitionComputer</code> stores three patterns on a ${r.grid} x ${r.grid} grid (a 10 x 10 pulse in
+  channel 0, a horizontal stripe in channel 1, a vertical stripe in channel 2). A pattern's signature is the first
+  ${r.frames} frames of the model's response, averaged over ${r.block} x ${r.block} cell blocks per channel with each
+  channel's mean removed. Each stored pattern gets an acceptance radius of ${r.radius_factor} x the largest distance of
+  ${r.n_noisy} noisy training copies. An input is matched to the nearest stored signature if it lies within that radius,
+  and rejected otherwise. Every input below has Gaussian noise (sd ${r.noise_sd}) added. Computed in Python when the site was built (seed ${r.seed}).</p>
+  <div class="scroll"><table><tr><th>Input (+ noise)</th><th>Stored?</th><th>Result</th><th>Score</th>${list(names, g => `<th>distance to ${esc(g)} (radius ${fmt(r.radii[g])})</th>`)}</tr>
+  ${list(r.tests, t => `<tr><td>${esc(t.input)}</td><td>${esc(t.kind)}</td><td class="${t.correct ? 'ok' : 'err'}">${esc(t.match ?? 'rejected')}</td><td>${fmt(t.score)}</td>${list(names, g => `<td>${fmt(t.distances[g])}</td>`)}</tr>`)}</table></div>
+  <p class="callout a">${r.correct} of ${r.tests.length} inputs handled correctly. Score = radius / (radius + distance) for
+  the nearest pattern, so above 0.5 means inside its radius. Only the first frames are used because the model is
+  dissipative: later frames lose the pattern and are dominated by amplified noise. (The earlier version compared k-means
+  transition graphs whose cluster labels meant different things in each run, and matched 1 of 3.)</p>`;
 }
