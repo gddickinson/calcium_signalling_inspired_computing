@@ -83,7 +83,7 @@ This model demonstrates how information can be encoded in wave properties (ampli
 
 **Key Features:**
 - Pattern recognition through wave dynamics
-- Logic-gate demos via wave interference (the gate set-up is fixed by the chosen operation; the input patterns are not read)
+- Logic gates (AND, OR, XOR) via wave interference: each input switches a line of sources, the output is the wave amplitude where the waves meet
 - Signal filtering through resonant wave interactions
 - Information storage in persistent wave patterns
 
