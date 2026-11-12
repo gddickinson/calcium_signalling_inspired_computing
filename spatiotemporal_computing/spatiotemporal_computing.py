@@ -16,9 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.signal import convolve2d
-import networkx as nx
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
 
 class SpatiotemporalComputing:
     def __init__(self, grid_size=100, n_channels=3, diffusion_rates=None, reaction_params=None):
@@ -276,109 +274,11 @@ class SpatiotemporalComputing:
         ani = FuncAnimation(fig, update, frames=frames, interval=50, blit=True)
         return ani
 
-# Implementation of a spatiotemporal computing task
-class PatternRecognitionComputer:
-    def __init__(self, model):
-        self.model = model
-        self.reference_patterns = {}
-        self.pattern_graphs = {}
-    
-    def train(self, patterns):
-        """
-        Train the system to recognize patterns.
-        
-        Parameters:
-        - patterns: Dictionary of named patterns, each a numpy array matching state dimensions
-        """
-        self.reference_patterns = patterns
-        
-        # For each pattern, compute its graph representation
-        for name, pattern in patterns.items():
-            # Initialize model with the pattern (and a history of this run only)
-            self.model.state = pattern.copy()
-            self.model.history = []
-            
-            # Run simulation to see how pattern evolves
-            self.model.run_simulation(steps=20)
-            
-            # Extract the pattern's dynamic signature
-            graph = self._compute_pattern_graph(self.model.history)
-            self.pattern_graphs[name] = graph
-    
-    def _compute_pattern_graph(self, history):
-        """Compute a graph representation of the pattern dynamics"""
-        # Create a graph where nodes are states and edges represent transitions
-        G = nx.DiGraph()
-        
-        # Extract key states by clustering
-        states = [state.flatten() for state in history]
-        
-        if len(states) > 5:  # Need enough states for clustering
-            # Reduce dimensionality for clustering
-            pca = PCA(n_components=min(10, len(states)-1))
-            reduced_states = pca.fit_transform(states)
-            
-            # Cluster into 5 representative states
-            kmeans = KMeans(n_clusters=min(5, len(states)), random_state=42)
-            clusters = kmeans.fit_predict(reduced_states)
-            
-            # Add nodes and edges to graph
-            for i in range(len(states)-1):
-                G.add_edge(clusters[i], clusters[i+1])
-        
-        return G
-    
-    def recognize(self, input_pattern, steps=20):
-        """
-        Recognize an input pattern by comparing its dynamics to reference patterns.
-        
-        Parameters:
-        - input_pattern: Pattern to recognize
-        - steps: Number of simulation steps
-        
-        Returns:
-        - Best matching pattern name and similarity score
-        """
-        # Initialize model with input pattern (and a history of this run only)
-        self.model.state = input_pattern.copy()
-        self.model.history = []
-        
-        # Run simulation
-        self.model.run_simulation(steps=steps)
-        
-        # Compute graph representation
-        input_graph = self._compute_pattern_graph(self.model.history)
-        
-        # Compare with reference patterns
-        best_match = None
-        best_score = -float('inf')
-        
-        for name, ref_graph in self.pattern_graphs.items():
-            # Calculate graph similarity
-            similarity = self._graph_similarity(input_graph, ref_graph)
-            
-            if similarity > best_score:
-                best_score = similarity
-                best_match = name
-        
-        return best_match, best_score
-    
-    def _graph_similarity(self, graph1, graph2):
-        """Calculate similarity between two graphs"""
-        # Simple measure: common edges ratio
-        edges1 = set(graph1.edges())
-        edges2 = set(graph2.edges())
-        
-        if not edges1 or not edges2:
-            return 0.0
-        
-        common_edges = len(edges1.intersection(edges2))
-        total_edges = len(edges1.union(edges2))
-        
-        if total_edges == 0:
-            return 0.0
-        
-        return common_edges / total_edges
+# Pattern recognition on top of this model lives in pattern_recognition.py
+if __package__:
+    from .pattern_recognition import PatternRecognitionComputer
+else:  # run as a script
+    from pattern_recognition import PatternRecognitionComputer  # noqa: E402
 
 # Example usage
 if __name__ == "__main__":
@@ -424,21 +324,16 @@ if __name__ == "__main__":
     print("\nTraining pattern recognition system...")
     pattern_recognizer.train(patterns)
     
-    # Test with a new pattern (noisy version of pattern1)
-    test_pattern = pattern1.copy()
-    test_pattern += np.random.normal(0, 0.2, test_pattern.shape)
-    
+    # Test with noisy versions of every stored pattern, and a pattern that was never stored
     print("\nTesting pattern recognition...")
-    matched_pattern, score = pattern_recognizer.recognize(test_pattern)
-    print(f"Test pattern matched with: {matched_pattern}, similarity score: {score:.3f}")
-    
-    # Test with another pattern
-    test_pattern2 = pattern2.copy()
-    test_pattern2 += np.random.normal(0, 0.2, test_pattern2.shape)
-    
-    matched_pattern, score = pattern_recognizer.recognize(test_pattern2)
-    print(f"Test pattern matched with: {matched_pattern}, similarity score: {score:.3f}")
-    
+    corner_pulse = np.zeros((3, 50, 50))
+    corner_pulse[0, 5:15, 35:45] = 1.0
+    tests = dict(patterns, corner_pulse_not_stored=corner_pulse)
+    for name, pattern in tests.items():
+        noisy = pattern + np.random.normal(0, 0.2, pattern.shape)
+        matched_pattern, score = pattern_recognizer.recognize(noisy)
+        print(f"{name} (+ noise): matched {matched_pattern}, score {score:.3f} (> 0.5 = recognised)")
+
     print("\nThis spatiotemporal computing model demonstrates how:")
     print("1. Information can be encoded in spatial wave patterns")
     print("2. Computation emerges from wave interactions over time")

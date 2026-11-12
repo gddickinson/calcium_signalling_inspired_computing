@@ -4,6 +4,7 @@ Contains:
 - SpatiotemporalComputing: Reaction-diffusion computing model
 - PatternRecognitionComputer: Spatiotemporal pattern recognition
 """
-from .spatiotemporal_computing import SpatiotemporalComputing, PatternRecognitionComputer
+from .spatiotemporal_computing import SpatiotemporalComputing
+from .pattern_recognition import PatternRecognitionComputer
 
 __all__ = ['SpatiotemporalComputing', 'PatternRecognitionComputer']
